@@ -32,6 +32,7 @@ declare -A TESTS=(
     [test_guard]="test_guard.cpp"
     [test_proto]="test_proto.cpp ../src/common/proto.cpp"
     [test_dict_repo]="test_dict_repo.cpp ../src/db/dict_repo.cpp"
+    [test_usr_repo]="test_usr_repo.cpp ../src/db/usr_repo.cpp"
 )
 
 # ------------------------------------------------------------
