@@ -46,11 +46,11 @@ public:
     }
 
     /// @brief 返回当前持有的 fd（不转移所有权）。
-    int get() const { return fd_; }
+    [[nodiscard]] int get() const { return fd_; }
 
     /// @brief 放弃所有权：返回 fd，并把自身置 -1，此后析构不再 close。
     // 用于把所有权交给外部（如注册进 epoll、传给别的资源管理器）。
-    int release() noexcept {
+    [[nodiscard]] int release() noexcept {
         int fd = fd_;
         fd_ = -1;
         return fd;

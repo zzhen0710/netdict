@@ -19,8 +19,8 @@ for src in test_*.cpp; do
     name="${src%.cpp}"          # 去掉 .cpp 后缀，作为可执行文件名
     echo "=== building $name ==="
 
-    # 编译：C++11，开警告，头文件在 ../include，链接 sqlite3，输出到 /tmp
-    g++ -std=c++11 -Wall -Wextra -I../include "$src" -lsqlite3 -o "/tmp/$name"
+    # 编译：C++17，开警告，头文件在 ../include，链接 sqlite3，输出到 /tmp
+    g++ -std=c++17 -Wall -Wextra -I../include "$src" -lsqlite3 -o "/tmp/$name"
 
     echo "=== running  $name ==="
     "/tmp/$name"                # 运行；测试失败（返回非 0）会因 set -e 终止脚本

@@ -61,7 +61,7 @@ public:
     }
 
     /// @brief 返回当前持有的句柄（不转移所有权）。
-    sqlite3* get() const { return pdb_; }
+    [[nodiscard]] sqlite3* get() const { return pdb_; }
 
 private:
     sqlite3* pdb_ = nullptr;
@@ -116,7 +116,7 @@ public:
     }
 
     /// @brief 返回当前持有的句柄（不转移所有权）。
-    sqlite3_stmt* get() const { return pstmt_; }
+    [[nodiscard]] sqlite3_stmt* get() const { return pstmt_; }
 
 private:
     sqlite3_stmt* pstmt_ = nullptr;

@@ -5,12 +5,13 @@
 #pragma once
 
 #include <string>
+#include <cstdint>      // uint8_t
 
 /// 项目中所有"操作结果状态"的集合。
 namespace stat {
 
     /// 用户操作（注册 / 登录 / 登出）
-    enum class UsrOp {
+    enum class UsrOp : uint8_t {
         Ok,             ///< 操作成功
         NotFound,       ///< 用户不存在
         Exists,         ///< 用户名已存在
@@ -20,20 +21,20 @@ namespace stat {
     };
 
     /// 查词操作
-    enum class Query {
+    enum class Query : uint8_t {
         Ok,             ///< 查询成功执行
         NotFound,       ///< 词未找到
         Err,            ///< 执行出错
     };
 
     /// 客户端连接状态
-    enum class Conn {
+    enum class Conn : uint8_t {
         Connected,      ///< 连接态
         Disconnected,   ///< 断连态
     };
 
     /// 管理终端（cmd）命令执行状态
-    enum class Admin {
+    enum class Admin : uint8_t {
         Ok,             ///< cmd 成功执行
         BadArgs,        ///< 参数错误
         NotFound,       ///< 指令未找到
