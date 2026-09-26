@@ -6,6 +6,9 @@ cmake_minimum_required(VERSION 3.12)
 # 项目名 + 语言（CXX 表示只启用 C++）
 project(netdict CXX)
 
+# 让 CMake 生成 compile_commands.json，供 clangd/IntelliSense 等工具读取
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # ---------- C++ 标准 ----------
 # 使用 C++17
 set(CMAKE_CXX_STANDARD 17)
@@ -33,10 +36,11 @@ find_package(Threads REQUIRED)
 add_executable(netdict_server
     src/ser/ser_main.cpp        # 服务器入口 main
     src/ser/server.cpp          # 服务器主类：监听、分发
-    src/ser/cmd.cpp             # 本地管理终端
+    src/ser/cmd.cpp             # 交互指令
     src/ser/thread_pool.cpp     # 线程池
     src/db/dict_repo.cpp        # 字典仓储
     src/db/usr_repo.cpp         # 用户仓储
+    src/common/proto.cpp        # 协议约定
     src/common/utils.cpp        # 通用工具
 )
 
@@ -50,9 +54,10 @@ target_link_libraries(netdict_server PRIVATE
 add_executable(netdict_client
     src/cli/cli_main.cpp        # 客户端入口 main
     src/cli/cli.cpp             # 客户端逻辑
-    src/common/utils.cpp        # 通用工具
+    src/ser/cmd.cpp             
+    src/common/proto.cpp
+    src/common/utils.cpp        
 )
-
 
 target_link_libraries(netdict_client PRIVATE
     Threads::Threads

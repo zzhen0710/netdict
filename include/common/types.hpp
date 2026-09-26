@@ -17,14 +17,12 @@ namespace stat {
         Exists,         ///< 用户名已存在
         WrongPwd,       ///< 密码错误
         Online,         ///< 已在线
-        Err,            ///< 执行出错
     };
 
     /// 查词操作
     enum class Query : uint8_t {
         Ok,             ///< 查询成功执行
         NotFound,       ///< 词未找到
-        Err,            ///< 执行出错
     };
 
     /// 客户端连接状态
@@ -38,7 +36,6 @@ namespace stat {
         Ok,             ///< cmd 成功执行
         BadArgs,        ///< 参数错误
         NotFound,       ///< 指令未找到
-        Err,            ///< 执行出错
     };
 
 }   // namespace stat
