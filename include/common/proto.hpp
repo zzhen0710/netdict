@@ -72,50 +72,27 @@ namespace proto {
         std::vector<std::string> args;    ///< 参数列表
     };
 
-    // ---------- 命令 → 字符串 ----------
-    // 返回不带点的纯命令名（如 "query"）
-
-    /// 用户字典命令 → 字符串
+    /// 命令 → 字符串：返回不带点的纯命令名（如 "query"）
     [[nodiscard]] std::string_view Cmd2Str(UsrCmd::Dict c) noexcept;
-    /// 用户控制命令 → 字符串
     [[nodiscard]] std::string_view Cmd2Str(UsrCmd::Ctrl c) noexcept;
-    /// 管理端字典命令 → 字符串
     [[nodiscard]] std::string_view Cmd2Str(SysCmd::Dict c) noexcept;
-    /// 管理端控制命令 → 字符串
     [[nodiscard]] std::string_view Cmd2Str(SysCmd::Ctrl c) noexcept;
 
-    // ---------- stat 枚举 → 响应字符串 ----------
-
-    /// 用户操作状态 → 响应首词
+    /// stat 枚举 → 响应首词（如 Ok → "ok"）
     [[nodiscard]] std::string_view Stat2Str(stat::UsrOp s) noexcept;
-    /// 查询状态 → 响应首词
     [[nodiscard]] std::string_view Stat2Str(stat::Query s) noexcept;
-    /// 管理端命令状态 → 响应首词
     [[nodiscard]] std::string_view Stat2Str(stat::Admin s) noexcept;
 
-    // ---------- 请求编解码 ----------
-    // encode/decode 均不含 \n；网络层负责加/去 \n
-
-    /// 编码请求：Msg → 字符串（不含 \n）
+    /// 请求编解码：encode/decode 均不含 \n
     [[nodiscard]] std::string encode(const Msg& msg);
-    /// 解码客户端请求：字符串 → Msg；失败返回 nullopt
     [[nodiscard]] std::optional<Msg> decodeUsr(std::string_view line);
-    /// 解码管理端请求：字符串 → Msg；失败返回 nullopt
     [[nodiscard]] std::optional<Msg> decodeSys(std::string_view line);
 
-    // ---------- 响应 ----------
-    // 格式：成功 "ok [data]"，失败 "<stat_name> [reason]"
-
-    /// 判断响应首词是否为 "ok"
+    /// 响应：成功 "ok [data]"，失败 "<stat_name> [reason]"
     [[nodiscard]] bool isOk(std::string_view line) noexcept;
-    /// 取响应首词（状态名，如 "ok" / "not_found"）
     [[nodiscard]] std::string_view respStat(std::string_view line) noexcept;
-    /// 取成功响应数据部分（"ok " 之后）；非 ok 或无数据返回空
     [[nodiscard]] std::string_view respData(std::string_view line) noexcept;
-
-    /// 构造成功响应："ok [data]"；data 为空时为 "ok"
     [[nodiscard]] std::string makeOk(std::string_view data = "");
-    /// 构造失败响应："<stat_name> [reason]"；reason 为空时只返回 stat_name
     [[nodiscard]] std::string makeErr(std::string_view stat_name,
                                       std::string_view reason = "");
 

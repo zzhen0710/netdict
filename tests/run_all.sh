@@ -31,6 +31,7 @@ cd "$(dirname "$0")"
 declare -A TESTS=(
     [test_guard]="test_guard.cpp"
     [test_proto]="test_proto.cpp ../src/common/proto.cpp"
+    [test_dict_repo]="test_dict_repo.cpp ../src/db/dict_repo.cpp"
 )
 
 # ------------------------------------------------------------
