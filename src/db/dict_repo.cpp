@@ -5,13 +5,13 @@
 
 #include <fstream>   // std::ifstream, std::getline
 #include <stdexcept> // std::runtime_error
-#include <utility>   // std::move
 
 /// 构造：打开数据库，建表与索引。
+/// @throws std::runtime_error 打开库或建表失败。
 DictRepo::DictRepo(const std::string& db_path)
     : db_(db_path.c_str()) {
 
-    // 建表（如不存在）+ 给 word 建索引（加速查询）
+    // 建表 + 给 word 建索引（加速等值查询）
     const char* sql =
         "create table if not exists dict ("
         "   word text,"
@@ -25,8 +25,8 @@ DictRepo::DictRepo(const std::string& db_path)
     }
 }
 
-/// 从 dict.txt 导入词条；表非空则跳过。
-/// 格式：每行 "<word> <mean>"，word 与 mean 之间可有多空格。
+/// 从文本文件导入词条；表非空则跳过。
+/// 格式：每行 "<word> <mean>"，word 与 mean 之间允许有多空格。
 bool DictRepo::initFromFile(const std::string& txt_path) {
     if (count() > 0) return true;
 
@@ -38,28 +38,23 @@ bool DictRepo::initFromFile(const std::string& txt_path) {
     std::string line;
 
     // 事务包住全部插入，大幅加速
-    sqlite3_exec(db_.get(), "BEGIN", nullptr, nullptr, nullptr);
+    if (sqlite3_exec(db_.get(), "BEGIN", nullptr, nullptr, nullptr) != SQLITE_OK)
+        return false;
 
     while (std::getline(file, line)) {
-        // 跳过空行
-        if (line.empty()) continue;
+        if (line.empty()) continue;   // 跳过空行
 
-        // word 起点：跳过行首空格
+        // 定位 word：跳过行首空格，到第一个空格
         auto word_start = line.find_first_not_of(' ');
         if (word_start == std::string::npos) continue;
-
-        // word 终点：第一个空格
         auto word_end = line.find(' ', word_start);
         if (word_end == std::string::npos) continue;
 
-        // mean 起点：跳过 word 与 mean 之间的多空格
+        // 定位 mean：跳过中间多空格，到行尾非空格
         auto mean_start = line.find_first_not_of(' ', word_end + 1);
         if (mean_start == std::string::npos) continue;
-
-        // mean 终点：跳过行尾空格
         auto mean_end = line.find_last_not_of(' ');
 
-        // 切出 word / mean
         std::string word = line.substr(word_start, word_end - word_start);
         std::string mean = line.substr(mean_start, mean_end - mean_start + 1);
 
@@ -76,29 +71,34 @@ bool DictRepo::initFromFile(const std::string& txt_path) {
         sqlite3_clear_bindings(stmt.get());
     }
 
-    sqlite3_exec(db_.get(), "COMMIT", nullptr, nullptr, nullptr);
-
+    if (sqlite3_exec(db_.get(), "COMMIT", nullptr, nullptr, nullptr) != SQLITE_OK) {
+        sqlite3_exec(db_.get(), "ROLLBACK", nullptr, nullptr, nullptr);
+        return false;
+    }
     return true;
 }
 
 /// 精确查询：按 word 查所有释义（含 rowid）。
-/// 返回 Ok（至少一条）或 NotFound（无结果）。
+/// @return Ok（至少一条）/ NotFound（无结果）/ Err（读取异常）。
 stat::Query DictRepo::query(const std::string& word, std::vector<Meaning>& out) {
     out.clear();
 
-    // 预编译查询；SQLITE_STATIC：word 是函数参数，活到函数结束，无需复制
+    // SQLITE_STATIC：word 是函数参数，活到函数结束，无需复制
     StmtGuard stmt(db_.get(), "select rowid, mean from dict where word = ?");
     sqlite3_bind_text(stmt.get(), 1, word.c_str(), -1, SQLITE_STATIC);
 
-    // 逐行读结果
-    while (sqlite3_step(stmt.get()) == SQLITE_ROW) {
-        Meaning m;
+    // 一个 word 可能多条释义：逐行读，直到 SQLITE_DONE
+    int rc;
+    while ((rc = sqlite3_step(stmt.get())) == SQLITE_ROW) {
+        out.emplace_back();          // 先占位再回填，省一次移动
+        auto& m = out.back();
+
         m.rowid = sqlite3_column_int64(stmt.get(), 0);          // 列 0：rowid
-        const auto* txt = sqlite3_column_text(stmt.get(), 1);   // 列 1：mean（可能为 NULL）
-        m.text = txt ? reinterpret_cast<const char*>(txt) : "";
-        out.push_back(std::move(m));
+        const auto* txt = sqlite3_column_text(stmt.get(), 1);   // 列 1：mean（可能 NULL）
+        m.text = txt ? reinterpret_cast<const char*>(txt) : ""; // 判空防 UB
     }
 
+    if (rc != SQLITE_DONE) return stat::Query::Err;
     return out.empty() ? stat::Query::NotFound : stat::Query::Ok;
 }
 

@@ -4,10 +4,9 @@
 
 #pragma once
 
-#include <string>
-#include <cstdint>      // uint8_t
+#include <cstdint>   // uint8_t
+#include <string>    // std::string
 
-/// 项目中所有"操作结果状态"的集合。
 namespace stat {
 
     /// 用户操作（注册 / 登录 / 登出）
@@ -17,18 +16,23 @@ namespace stat {
         Exists,         ///< 用户名已存在
         WrongPwd,       ///< 密码错误
         Online,         ///< 已在线
+        Err,            ///< 未知错误
     };
 
     /// 查词操作
     enum class Query : uint8_t {
-        Ok,             ///< 查询成功执行
+        Ok,             ///< 查询成功
         NotFound,       ///< 词未找到
+        Starred,        ///< 已经收藏
+        Unstarred,      ///< 尚未收藏
+        Err,            ///< 未知错误
     };
 
     /// 客户端连接状态
     enum class Conn : uint8_t {
-        Connected,      ///< 连接态
         Disconnected,   ///< 断连态
+        Connected,      ///< 连接态
+        Err,            ///< 未知错误
     };
 
     /// 管理终端（cmd）命令执行状态
@@ -36,6 +40,7 @@ namespace stat {
         Ok,             ///< cmd 成功执行
         BadArgs,        ///< 参数错误
         NotFound,       ///< 指令未找到
+        Err,            ///< 未知错误
     };
 
 }   // namespace stat
