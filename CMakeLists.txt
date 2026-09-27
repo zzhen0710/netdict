@@ -42,6 +42,7 @@ add_executable(netdict_server
     src/db/usr_repo.cpp         # 用户仓储
     src/common/proto.cpp        # 协议约定
     src/common/utils.cpp        # 通用工具
+    src/common/logger.cpp       # 日志
 )
 
 # 服务器链接：SQLite3 + 线程库
@@ -57,6 +58,7 @@ add_executable(netdict_client
     src/ser/cmd.cpp             
     src/common/proto.cpp
     src/common/utils.cpp        
+    src/common/logger.cpp
 )
 
 target_link_libraries(netdict_client PRIVATE
