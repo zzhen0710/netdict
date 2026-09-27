@@ -14,8 +14,7 @@ UsrRepo::UsrRepo(const std::string& db_path)
     const char* sql =
         "create table if not exists usr ("
         "    name text primary key,"
-        "    pwd text,"
-        "    stage int"
+        "    pwd text"
         ");"
         "create table if not exists history ("
         "    name text,"
@@ -43,79 +42,35 @@ UsrRepo::UsrRepo(const std::string& db_path)
 /// @return Ok（成功）/ Exists（用户名已存在）/ Err。
 stat::UsrOp UsrRepo::reg(const std::string& name, const std::string& pwd) {
     StmtGuard stmt(db_.get(),
-        "insert into usr (name, pwd, stage) values (?, ?, ?)");
+        "insert into usr (name, pwd) values (?, ?)");
 
-    // 插入时先置离线；主键冲突即用户名已存在
     sqlite3_bind_text(stmt.get(), 1, name.c_str(), -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt.get(), 2, pwd.c_str(),  -1, SQLITE_STATIC);
-    sqlite3_bind_int (stmt.get(), 3, static_cast<int>(stat::Conn::Disconnected));
 
     int rc = sqlite3_step(stmt.get());
+    if (rc == SQLITE_DONE)       return stat::UsrOp::Ok;
     if (rc == SQLITE_CONSTRAINT) return stat::UsrOp::Exists;
-    if (rc != SQLITE_DONE)       return stat::UsrOp::Err;
 
-    // 插入成功 → 置为在线
-    StmtGuard upd(db_.get(), "update usr set stage = ? where name = ?");
-    sqlite3_bind_int (upd.get(), 1, static_cast<int>(stat::Conn::Connected));
-    sqlite3_bind_text(upd.get(), 2, name.c_str(), -1, SQLITE_STATIC);
-    if (sqlite3_step(upd.get()) != SQLITE_DONE)
-        return stat::UsrOp::Err;
-
-    return stat::UsrOp::Ok;
+    return stat::UsrOp::Err;
 }
 
 /// 登录。
-/// @return Ok / NotFound（用户不存在）/ WrongPwd / Online（已在线）/ Err。
+/// @return Ok / NotFound（用户不存在）/ WrongPwd / Err。
 stat::UsrOp UsrRepo::login(const std::string& name, const std::string& pwd) {
-    StmtGuard stmt(db_.get(), "select pwd, stage from usr where name = ?");
+    StmtGuard stmt(db_.get(), "select pwd from usr where name = ?");
     sqlite3_bind_text(stmt.get(), 1, name.c_str(), -1, SQLITE_STATIC);
 
     // 查用户
     int rc = sqlite3_step(stmt.get());
-    if (rc != SQLITE_ROW) {
-        return (rc == SQLITE_DONE) ? stat::UsrOp::NotFound : stat::UsrOp::Err;
-    }
+    if (rc == SQLITE_DONE) return stat::UsrOp::NotFound;
+    if (rc != SQLITE_ROW)  return stat::UsrOp::Err;
 
     // 密码校验
     const auto* db_pwd = sqlite3_column_text(stmt.get(), 0);
     if (!db_pwd || pwd != reinterpret_cast<const char*>(db_pwd))
         return stat::UsrOp::WrongPwd;
 
-    // 已在线则拒绝重复登录，仍保持在线状态
-    int stage = sqlite3_column_int(stmt.get(), 1);
-    if (stage == static_cast<int>(stat::Conn::Connected))
-        return stat::UsrOp::Online;
-
-    // 更新在线状态
-    StmtGuard upd(db_.get(), "update usr set stage = ? where name = ?");
-    sqlite3_bind_int (upd.get(), 1, static_cast<int>(stat::Conn::Connected));
-    sqlite3_bind_text(upd.get(), 2, name.c_str(), -1, SQLITE_STATIC);
-    if (sqlite3_step(upd.get()) != SQLITE_DONE)
-        return stat::UsrOp::Err;
-
     return stat::UsrOp::Ok;
-}
-
-/// 登出。
-/// @return Ok（成功登出）/ NotFound（用户不存在或本就不在线）/ Err。
-stat::UsrOp UsrRepo::logout(const std::string& name) {
-    // 只在"在线"时更新：WHERE 加 stage = Connected，使"已离线"匹配 0 行。
-    // 因为 sqlite3_changes 返回"匹配行数"而非"值实际变化行数"——
-    // 若只写 where name = ?，已离线用户仍匹配 1 行，changes = 1，会被误判为 Ok。
-    StmtGuard stmt(db_.get(),
-        "update usr set stage = ? "
-        "where name = ? and stage = ?");
-
-    sqlite3_bind_int (stmt.get(), 1, static_cast<int>(stat::Conn::Disconnected));
-    sqlite3_bind_text(stmt.get(), 2, name.c_str(), -1, SQLITE_STATIC);
-    sqlite3_bind_int (stmt.get(), 3, static_cast<int>(stat::Conn::Connected));
-
-    if (sqlite3_step(stmt.get()) != SQLITE_DONE)
-        return stat::UsrOp::Err;
-
-    // 改 0 行：用户不存在，或本来就不在线
-    return sqlite3_changes(db_.get()) == 0
-        ? stat::UsrOp::NotFound : stat::UsrOp::Ok;
 }
 
 /// 追加一条历史记录。
@@ -158,7 +113,7 @@ bool UsrRepo::getHistory(const std::string& name, size_t limit,
         e.mean = m ? reinterpret_cast<const char*>(m) : "";
         e.time = t ? reinterpret_cast<const char*>(t) : "";
     }
-    
+
     return rc == SQLITE_DONE;
 }
 

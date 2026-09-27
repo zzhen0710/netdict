@@ -33,11 +33,7 @@ public:
     stat::UsrOp reg(const std::string& name, const std::string& pwd);
 
     /// 登录；用户不存在返回 NotFound，密码错返回 WrongPwd
-    /// 已在别处登录返回 Online
     stat::UsrOp login(const std::string& name, const std::string& pwd);
-
-    /// 登出
-    stat::UsrOp logout(const std::string& name);
 
     // ---------- 历史 ----------
 
