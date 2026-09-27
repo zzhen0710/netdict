@@ -13,6 +13,7 @@ namespace proto {
             case UsrCmd::Dict::Query:    return "query";
             case UsrCmd::Dict::History:  return "history";
             case UsrCmd::Dict::Star:     return "star";
+            case UsrCmd::Dict::Unstar:   return "unstar";
             case UsrCmd::Dict::Pad:      return "pad";
         }
         return "unknown";
@@ -25,6 +26,7 @@ namespace proto {
             case UsrCmd::Ctrl::Login:   return "login";
             case UsrCmd::Ctrl::Logout:  return "logout";
             case UsrCmd::Ctrl::Help:    return "help";
+            case UsrCmd::Ctrl::Quit:    return "quit";
         }
         return "unknown";
     }
@@ -49,8 +51,9 @@ namespace proto {
             case SysCmd::Ctrl::Stat:     return "stat";
             case SysCmd::Ctrl::History:  return "history";
             case SysCmd::Ctrl::Pad:      return "pad";
-            case SysCmd::Ctrl::Help:     return "help";
             case SysCmd::Ctrl::Log:      return "log";
+            case SysCmd::Ctrl::Shutdown: return "shutdown";
+            case SysCmd::Ctrl::Help:     return "help";
         }
         return "unknown";
     }
@@ -64,7 +67,6 @@ namespace proto {
             case stat::UsrOp::NotFound:  return "not_found";
             case stat::UsrOp::Exists:    return "exists";
             case stat::UsrOp::WrongPwd:  return "wrong_pwd";
-            case stat::UsrOp::Online:    return "online";
             case stat::UsrOp::Err:       return "err";      // 消 Warnning
         }
         return "err";
@@ -146,12 +148,15 @@ namespace proto {
         if (name == "query")        cmd = UsrCmd::Dict::Query;
         else if (name == "history") cmd = UsrCmd::Dict::History;
         else if (name == "star")    cmd = UsrCmd::Dict::Star;
+        else if (name == "unstar")  cmd = UsrCmd::Dict::Unstar;
         else if (name == "pad")     cmd = UsrCmd::Dict::Pad;
 
         else if (name == "reg")     cmd = UsrCmd::Ctrl::Reg;
         else if (name == "login")   cmd = UsrCmd::Ctrl::Login;
         else if (name == "logout")  cmd = UsrCmd::Ctrl::Logout;
         else if (name == "help")    cmd = UsrCmd::Ctrl::Help;
+        else if (name == "quit"     ||
+                 name == "exit")    cmd = UsrCmd::Ctrl::Quit;
 
         else return std::nullopt;
 
@@ -180,8 +185,11 @@ namespace proto {
         else if (name == "stat")    cmd = SysCmd::Ctrl::Stat;
         else if (name == "history") cmd = SysCmd::Ctrl::History;
         else if (name == "pad")     cmd = SysCmd::Ctrl::Pad;
-        else if (name == "help")    cmd = SysCmd::Ctrl::Help;
         else if (name == "log")     cmd = SysCmd::Ctrl::Log;
+        else if (name == "shutdown" ||
+                 name == "quit"     ||
+                 name == "exit")    cmd = SysCmd::Ctrl::Shutdown;
+        else if (name == "help")    cmd = SysCmd::Ctrl::Help;
 
         else return std::nullopt;
 

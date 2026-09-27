@@ -23,14 +23,16 @@ namespace proto {
             Query,      ///< .query <word>             查单词
             History,    ///< .history [num]            查自己的历史
             Star,       ///< .star <word>              收藏单词
+            Unstar,     ///< .unstar <word>            取消收藏
             Pad,        ///< .pad [num]                显示收藏单词（字母序）
         };
         /// 用户控制
         enum class Ctrl : uint8_t {
-            Reg,        ///< .reg <name> <pwd>    注册
-            Login,      ///< .login <name> <pwd>  登录
-            Logout,     ///< .logout / .quit / .exit  登出
-            Help,       ///< .help                欢迎与指令集
+            Reg,        ///< .reg <name> <pwd>         注册
+            Login,      ///< .login <name> <pwd>       登录
+            Logout,     ///< .logout                   登出
+            Help,       ///< .help                     欢迎与指令集
+            Quit,       ///< .quit / .exit             断开连接
         };
     }
 
@@ -38,21 +40,22 @@ namespace proto {
     namespace SysCmd {
         /// 管理字典
         enum class Dict : uint8_t {
-            List,       ///< .list [name*]        列词（* 通配）
-            View,       ///< .view <name>         查看词
-            Add,        ///< .add <name> <mean>   加词
-            Del,        ///< .del <name>          删词
+            List,       ///< .list [name*]          列词（* 通配）
+            View,       ///< .view <name>           查看词
+            Add,        ///< .add <name> <mean>     加词
+            Del,        ///< .del <name>            删词
             Update,     ///< .update <name> <mean>  改词
-            Reload,     ///< .reload              重载词库
-            Num,        ///< .num                 词条数
+            Reload,     ///< .reload                重载词库
+            Num,        ///< .num                   词条数
         };
         /// 服务器控制
         enum class Ctrl : uint8_t {
-            Stat,       ///< .stat [usrname]           打印用户信息
-            History,    ///< .history <usrname> [num]  看指定用户历史
-            Pad,        ///< .pad <usrname> [num]      看用户单词本
-            Help,       ///< .help                     指令集
-            Log,        ///< .log <level>              切日志等级
+            Stat,       ///< .stat [usrname]            打印用户信息
+            History,    ///< .history <usrname> [num]   看指定用户历史
+            Pad,        ///< .pad <usrname> [num]       看用户单词本
+            Log,        ///< .log <level>               切日志等级
+            Shutdown,   ///< .shutdown / .quit / .exit  关闭服务器
+            Help,       ///< .help                      指令集
         };
     }
 
