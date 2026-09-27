@@ -1,9 +1,8 @@
 /// @file ser/ser_main.cpp
-/// @brief 服务器入口：解析参数 → 构造 Server → run。
+/// @brief 服务器入口：解析参数 → 打开数据库 → 构造 Server → run。
 
 #include "ser/ser.hpp"
 #include "common/logger.hpp"
-#include "common/net.hpp"
 
 #include <csignal>
 #include <cstdlib>      // std::atoi
@@ -26,7 +25,16 @@ int main(int argc, char* argv[]) {
     int port = (argc > 2) ? std::atoi(argv[2]) : net::DEFAULT_PORT;
 
     try {
-        Server server(ip, port);
+        // 打开数据库（文件不存在时自动建表）
+        DictRepo dict("data/dict.db");
+        UsrRepo  usr("data/usr.db");
+
+        // 导入词库（表非空则跳过）
+        if (!dict.initFromFile("data/dict.txt")) {
+            LOG_WARN("dict.txt not loaded (missing or already imported)");
+        }
+
+        Server server(dict, usr, ip, port);
         g_server = &server;
 
         std::signal(SIGINT,  onSignal);

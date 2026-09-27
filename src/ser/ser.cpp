@@ -1,22 +1,28 @@
-/// @file ser/server.cpp
-/// @brief 服务器实现（第一版：accept + 收一行 + 回固定串）。
+/// @file ser/ser.cpp
+/// @brief 服务器实现（第一版：accept + 收一行 + 解码分发 + 回一行）。
 
 #include "ser/ser.hpp"
 #include "common/logger.hpp"
-#include "common/net.hpp"      // net::BUF_SIZE（← 你漏了）
+#include "common/net.hpp"
+#include "common/utils.hpp"     // utils::overloaded
 
 #include <arpa/inet.h>      // inet_addr, inet_ntoa
 #include <netinet/in.h>     // sockaddr_in
-#include <sys/socket.h>     // socket, bind, listen, accept, recv, send
+#include <sys/socket.h>     // socket, bind, listen, accept, recv
 #include <unistd.h>         // close
 
-#include <cstring>          // strlen
 #include <stdexcept>        // std::runtime_error
+#include <string>
 #include <string_view>
+#include <variant>          // std::visit
+
+// ---- 构造 / 析构 ----
 
 /// 构造：创建 socket、bind、listen。
-Server::Server(std::string_view ip, int port)
-    : listen_fd_(-1), ip_(ip), port_(port), running_(false) {
+Server::Server(DictRepo& dict, UsrRepo& usr,
+               std::string_view ip, int port)
+    : dict_(dict), usr_(usr),
+      listen_fd_(-1), ip_(ip), port_(port), running_(false) {
 
     // 1. 创建 TCP 套接字
     listen_fd_ = socket(AF_INET, SOCK_STREAM, 0);
@@ -28,13 +34,11 @@ Server::Server(std::string_view ip, int port)
     int opt = 1;
     setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
-    // 3. 构造本机地址
-    sockaddr_in addr {
-        AF_INET,
-        htons(static_cast<uint16_t>(port_)),
-        { inet_addr(ip_.c_str()) },
-        {}                   // 空，等价于全 0
-    };
+    // 3. 构造本机地址（sockaddr_in 用 {} 清零，避免 sin_zero 未初始化警告）
+    sockaddr_in addr{};
+    addr.sin_family      = AF_INET;
+    addr.sin_port        = htons(static_cast<uint16_t>(port_));
+    addr.sin_addr.s_addr = inet_addr(ip_.c_str());
 
     // 4. bind
     if (bind(listen_fd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
@@ -57,6 +61,8 @@ Server::~Server() {
         ::close(listen_fd_);
     }
 }
+
+// ---- 运行 / 停止 ----
 
 /// 启动：阻塞 accept 循环。
 void Server::run() {
@@ -94,7 +100,9 @@ void Server::stop() {
     }
 }
 
-/// 处理单个客户端：收一行 → 回一行 → 返回。
+//  ---- 单个客户端处理 ----
+
+/// 处理单个客户端：收一行 → decodeUsr → visit 分发 → 回一行。
 void Server::handleClient(int cfd) {
     char buf[net::BUF_SIZE];
 
@@ -114,12 +122,37 @@ void Server::handleClient(int cfd) {
         line.remove_suffix(1);
     }
 
-    LOG_INFO("recv: %.*s", static_cast<int>(line.size()), line.data()); // 带精度打印，按长度不按'\0'
+    LOG_INFO("recv: %.*s", static_cast<int>(line.size()), line.data());
 
-    // 第一版：固定回复
-    const char* resp = "world\n";
-    ssize_t sent = send(cfd, resp, std::strlen(resp), 0);
-    if (sent < 0) {
+    // 1. 解析
+    auto msg = proto::decodeUsr(line);
+    if (!msg) {
+        sendLine(cfd, proto::makeErr("err", "bad request"));
+        return;
+    }
+
+    // 2. 分发（四类命令；SysCmd 不允许客户端发）
+    std::visit(utils::overloaded{
+        [&](proto::UsrCmd::Dict c) { handleUsrDict(cfd, *msg, c); },
+        [&](proto::UsrCmd::Ctrl c) { handleUsrCtrl(cfd, *msg, c); },
+        [&](proto::SysCmd::Dict)   { sendLine(cfd, proto::makeErr("err", "forbidden")); },
+        [&](proto::SysCmd::Ctrl)   { sendLine(cfd, proto::makeErr("err", "forbidden")); },
+    }, msg->cmd);
+}
+
+// ---- 发送辅助 ----
+
+/// 发送原始字节（不补 \n）；net::sendAll 保证发完整。
+void Server::sendBytes(int cfd, std::string_view data) {
+    if (net::sendAll(cfd, data.data(), data.size()) < 0) {
         LOG_ERR("send failed");
     }
+}
+
+/// 发送一行（自动补 \n）；行协议专用。
+void Server::sendLine(int cfd, std::string_view line) {
+    // 拼出 "line\n"；std::string 拥有内容，传给 sendAll
+    std::string out(line);
+    out += '\n';
+    sendBytes(cfd, out);
 }

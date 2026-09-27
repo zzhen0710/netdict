@@ -36,14 +36,16 @@ find_package(Threads REQUIRED)
 add_executable(netdict_server
     src/ser/ser_main.cpp        # 服务器入口 main
     src/ser/ser.cpp             # 服务器主类：监听、分发
-    src/ser/cmd.cpp             # 交互指令
     src/ser/thread_pool.cpp     # 线程池
     src/db/dict_repo.cpp        # 字典仓储
     src/db/usr_repo.cpp         # 用户仓储
+    src/common/cmd.cpp          # 交互指令
     src/common/proto.cpp        # 协议约定
     src/common/utils.cpp        # 通用工具
     src/common/logger.cpp       # 日志
     src/common/net.cpp          # 网络通用工具
+    src/ser/handle_usr_dict.cpp # 处理用户字典请求
+    src/ser/handle_usr_ctrl.cpp # 处理用户控制请求
 )
 
 # 服务器链接：SQLite3 + 线程库
@@ -56,7 +58,7 @@ target_link_libraries(netdict_server PRIVATE
 add_executable(netdict_client
     src/cli/cli_main.cpp        # 客户端入口 main
     src/cli/cli.cpp             # 客户端逻辑
-    src/ser/cmd.cpp             
+    src/common/cmd.cpp             
     src/common/proto.cpp
     src/common/utils.cpp        
     src/common/logger.cpp
