@@ -49,19 +49,21 @@ private:
 
     // ---- 用户命令：分发 + 细粒度实现 ----
 
-    // 用户字典命令：query / history / star / pad
+    // 用户字典命令：query / history / star / unstar / pad
     void handleUsrDict(int cfd, const proto::Msg& msg, proto::UsrCmd::Dict c);
     void doQuery  (int cfd, const proto::Msg& msg);
     void doHistory(int cfd, const proto::Msg& msg);
     void doStar   (int cfd, const proto::Msg& msg);
+    void doUnstar (int cfd, const proto::Msg& msg);
     void doPad    (int cfd, const proto::Msg& msg);     
 
-    // 用户控制命令：reg / login / logout / help
+    // 用户控制命令：reg / login / logout / help / quit
     void handleUsrCtrl(int cfd, const proto::Msg& msg, proto::UsrCmd::Ctrl c);
     void doReg   (int cfd, const proto::Msg& msg);
     void doLogin (int cfd, const proto::Msg& msg);
     void doLogout(int cfd, const proto::Msg& msg);
     void doHelp  (int cfd, const proto::Msg& msg);      // 对齐签名
+    void doQuit  (int cfd, const proto::Msg& msg);
 
     // ---- 依赖（不拥有，引用） ----
     DictRepo& dict_;          ///< 字典数据表
