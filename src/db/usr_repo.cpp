@@ -27,6 +27,7 @@ UsrRepo::UsrRepo(const std::string& db_path)
         "create table if not exists star ("
         "    name text,"
         "    word text,"
+        "    mean text," 
         "    time text,"
         "    primary key (name, word)"   // 同一用户不重复收藏
         ");";
@@ -157,20 +158,26 @@ bool UsrRepo::getHistory(const std::string& name, size_t limit,
         e.mean = m ? reinterpret_cast<const char*>(m) : "";
         e.time = t ? reinterpret_cast<const char*>(t) : "";
     }
+    
     return rc == SQLITE_DONE;
 }
 
 /// 收藏。
 /// @return Ok / Starred（已收藏）/ Err。
-stat::Query UsrRepo::star(const std::string& name, const std::string& word) {
-    StmtGuard stmt(db_.get(), "insert into star (name, word) values (?, ?)");
-    sqlite3_bind_text(stmt.get(), 1, name.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt.get(), 2, word.c_str(), -1, SQLITE_TRANSIENT);
+stat::Query UsrRepo::star(const std::string& name, const StarEntry& entry) {
+    StmtGuard stmt(db_.get(),
+        "insert into star (name, word, mean, time) values (?, ?, ?, ?)");
+
+    sqlite3_bind_text(stmt.get(), 1, name.c_str(),        -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt.get(), 2, entry.word.c_str(),  -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt.get(), 3, entry.mean.c_str(),  -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt.get(), 4, entry.time.c_str(),  -1, SQLITE_STATIC);
 
     // 组合主键冲突 = 已收藏
     int rc = sqlite3_step(stmt.get());
     if (rc == SQLITE_DONE)       return stat::Query::Ok;
     if (rc == SQLITE_CONSTRAINT) return stat::Query::Starred;
+
     return stat::Query::Err;
 }
 
@@ -191,20 +198,28 @@ stat::Query UsrRepo::unstar(const std::string& name, const std::string& word) {
 /// 取用户收藏（按 word 字母序，最多 limit 条）。
 /// @return Ok / Err。
 stat::Query UsrRepo::getStars(const std::string& name, size_t limit,
-                              std::vector<std::string>& out) {
+                              std::vector<StarEntry>& out) {
     out.clear();
 
     StmtGuard stmt(db_.get(),
-        "select word from star where name = ? order by word asc limit ?");
+        "select word, mean, time from star "
+        "where name = ? order by word asc limit ?");
 
-    sqlite3_bind_text(stmt.get(), 1, name.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.get(), 1, name.c_str(), -1, SQLITE_STATIC);
     sqlite3_bind_int64(stmt.get(), 2, static_cast<sqlite3_int64>(limit));
 
     // 逐行读结果
     int rc;
     while ((rc = sqlite3_step(stmt.get())) == SQLITE_ROW) {
         const auto* w = sqlite3_column_text(stmt.get(), 0);
-        out.emplace_back(w ? reinterpret_cast<const char*>(w) : "");
+        const auto* m = sqlite3_column_text(stmt.get(), 1);
+        const auto* t = sqlite3_column_text(stmt.get(), 2);
+        out.push_back({
+            w ? reinterpret_cast<const char*>(w) : "",
+            m ? reinterpret_cast<const char*>(m) : "",
+            t ? reinterpret_cast<const char*>(t) : ""
+        });
     }
+
     return rc == SQLITE_DONE ? stat::Query::Ok : stat::Query::Err;
 }

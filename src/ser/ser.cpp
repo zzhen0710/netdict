@@ -85,6 +85,10 @@ void Server::run() {
 
         // 单线程：处理完再 accept 下一个
         handleClient(cfd);
+
+        // 连接关闭，清会话
+        sessions_.erase(cfd);
+
         ::close(cfd);
 
         LOG_INFO("client disconnected");
@@ -132,7 +136,7 @@ void Server::handleClient(int cfd) {
     }
 
     // 2. 分发（四类命令；SysCmd 不允许客户端发）
-    std::visit(utils::overloaded{
+    std::visit(utils::overloaded {
         [&](proto::UsrCmd::Dict c) { handleUsrDict(cfd, *msg, c); },
         [&](proto::UsrCmd::Ctrl c) { handleUsrCtrl(cfd, *msg, c); },
         [&](proto::SysCmd::Dict)   { sendLine(cfd, proto::makeErr("err", "forbidden")); },

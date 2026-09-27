@@ -15,6 +15,13 @@ struct HistoryEntry {
     std::string time;
 };
 
+/// 一条收藏记录
+struct StarEntry {
+    std::string word;
+    std::string mean;
+    std::string time;
+};
+
 class UsrRepo {
 public:
     /// 打开用户库，建表与索引
@@ -44,14 +51,14 @@ public:
     // ---------- 收藏 ----------
 
     /// 收藏；已收藏返回 Exists
-    stat::Query star(const std::string& name, const std::string& word);
+    stat::Query star(const std::string& name, const StarEntry& entry);
 
     /// 取消收藏；未收藏返回 NotFound
     stat::Query unstar(const std::string& name, const std::string& word);
 
-    /// 查该用户收藏的词，最多 limit 条；返回 Ok / Err
+    /// 查该用户收藏的词（字母序），最多 limit 条，查得 word + mean；返回 Ok / Err
     stat::Query getStars(const std::string& name, size_t limit, 
-                         std::vector<std::string>& out);
+                         std::vector<StarEntry>& out);
 
 private:
     DbGuard db_;

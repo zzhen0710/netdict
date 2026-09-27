@@ -7,8 +7,9 @@
 #include "common/proto.hpp"     // proto::Msg / proto::UsrCmd
 #include "db/dict_repo.hpp"
 #include "db/usr_repo.hpp"
-#include <string>
+#include <string>               
 #include <string_view>
+#include <unordered_map>        // std::unordered_map
 
 /// TCP 服务器：单线程 accept 循环，处理完一个客户端再收下一个。
 /// 第一版只做"收一行 → 解码 → 分发"；业务在 handleUsrDict / handleUsrCtrl。
@@ -27,7 +28,7 @@ public:
     /// 析构：关闭监听套接字。
     ~Server();
 
-    Server(const Server&)            = delete;
+    Server(const Server&) = delete;
     Server& operator=(const Server&) = delete;
 
     /// 启动：阻塞 accept 循环，直到 stop()。
@@ -53,18 +54,21 @@ private:
     void doQuery  (int cfd, const proto::Msg& msg);
     void doHistory(int cfd, const proto::Msg& msg);
     void doStar   (int cfd, const proto::Msg& msg);
-    void doPad    (int cfd, const proto::Msg& msg);
+    void doPad    (int cfd, const proto::Msg& msg);     
 
     // 用户控制命令：reg / login / logout / help
     void handleUsrCtrl(int cfd, const proto::Msg& msg, proto::UsrCmd::Ctrl c);
     void doReg   (int cfd, const proto::Msg& msg);
     void doLogin (int cfd, const proto::Msg& msg);
     void doLogout(int cfd, const proto::Msg& msg);
-    void doHelp  (int cfd, const proto::Msg& msg);
+    void doHelp  (int cfd, const proto::Msg& msg);      // 对齐签名
 
     // ---- 依赖（不拥有，引用） ----
     DictRepo& dict_;          ///< 字典数据表
     UsrRepo&  usr_;           ///< 用户数据表
+    
+    // ---- 会话：cfd → 当前登录用户名 ----
+    std::unordered_map<int, std::string> sessions_;
 
     // ---- 自身状态 ----
     int         listen_fd_;   ///< 监听套接字

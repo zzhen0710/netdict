@@ -23,7 +23,7 @@ namespace proto {
             Query,      ///< .query <word>             查单词
             History,    ///< .history [num]            查自己的历史
             Star,       ///< .star <word>              收藏单词
-            Pad,        ///< .pad                      显示收藏单词（字母序）
+            Pad,        ///< .pad [num]                显示收藏单词（字母序）
         };
         /// 用户控制
         enum class Ctrl : uint8_t {
@@ -50,7 +50,7 @@ namespace proto {
         enum class Ctrl : uint8_t {
             Stat,       ///< .stat [usrname]           打印用户信息
             History,    ///< .history <usrname> [num]  看指定用户历史
-            Pad,        ///< .pad <usrname>            看用户单词本
+            Pad,        ///< .pad <usrname> [num]      看用户单词本
             Help,       ///< .help                     指令集
             Log,        ///< .log <level>              切日志等级
         };

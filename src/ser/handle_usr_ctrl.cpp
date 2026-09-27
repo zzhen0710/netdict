@@ -5,8 +5,6 @@
 #include "common/logger.hpp"
 #include "common/proto.hpp"
 
-#include <string>
-
 // ---- 分发 ----
 
 /// 处理用户控制命令：按枚举分发到具体 doXxx。
@@ -20,24 +18,44 @@ void Server::handleUsrCtrl(int cfd, const proto::Msg& msg,
     }
 }
 
-// ---- 各命令实现（占位） ----
+// ---- 各命令 ----
 
+/// .reg <name> <pwd> —— 注册（占位）。
 void Server::doReg(int cfd, const proto::Msg& msg) {
     (void)msg;
     sendLine(cfd, proto::makeErr("err", "not implemented"));
 }
 
+/// .login <name> <pwd> —— 登录；成功后记会话。
 void Server::doLogin(int cfd, const proto::Msg& msg) {
-    (void)msg;
-    sendLine(cfd, proto::makeErr("err", "not implemented"));
+    if (msg.args.size() < 2) {
+        sendLine(cfd, proto::makeErr("bad_args"));
+        return;
+    }
+    auto st = usr_.login(msg.args[0], msg.args[1]);
+    if (st == stat::UsrOp::Ok) {
+        sessions_[cfd] = msg.args[0];   // 记会话
+        sendLine(cfd, proto::makeOk());
+    } else {
+        sendLine(cfd, proto::makeErr(proto::Stat2Str(st)));
+    }
 }
 
+/// .logout —— 登出；清会话。
 void Server::doLogout(int cfd, const proto::Msg& msg) {
     (void)msg;
-    sendLine(cfd, proto::makeErr("err", "not implemented"));
+    auto it = sessions_.find(cfd);
+    if (it == sessions_.end()) {
+        sendLine(cfd, proto::makeErr("err", "not logged in"));
+        return;
+    }
+    usr_.logout(it->second);
+    sessions_.erase(it);
+    sendLine(cfd, proto::makeOk());
 }
 
+/// .help —— 欢迎与指令集（占位）。
 void Server::doHelp(int cfd, const proto::Msg& msg) {
     (void)msg;
-    sendLine(cfd, proto::makeOk("commands: query history star pad reg login logout help"));
+    sendLine(cfd, proto::makeErr("err", "not implemented"));
 }

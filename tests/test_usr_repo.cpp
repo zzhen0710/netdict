@@ -36,7 +36,7 @@ int main() {
         // 正确登录（stage: Disconnected → Connected）
         assert(repo.login("alice", "123") == stat::UsrOp::Ok);
 
-        // 已在线再登录 → 保持 Online
+        // 已在线再登录 → Online
         assert(repo.login("alice", "123") == stat::UsrOp::Online);
 
         // 登出（stage → Disconnected）
@@ -44,7 +44,6 @@ int main() {
 
         // 隐式验证 stage 已回 Disconnected：
         //   若 stage 仍 Connected，下面 login 会返回 Online
-        //   真正"看 stage"由 cmd 的 .stat 命令负责
         assert(repo.login("alice", "123") == stat::UsrOp::Ok);
 
         // 再登出 → 成功
@@ -64,7 +63,7 @@ int main() {
         assert(repo.addHistory("alice", {"apple", "n.苹果", "2026-01-01 10:00:00"}));
         assert(repo.addHistory("alice", {"book",  "n.书",   "2026-01-01 10:01:00"}));
         assert(repo.addHistory("alice", {"cat",   "n.猫",   "2026-01-01 10:02:00"}));
-        // bob 一条，用于验证按 name 隔离
+        // bob 一条，验证按 name 隔离
         assert(repo.addHistory("bob", {"dog", "n.狗", "2026-01-01 11:00:00"}));
 
         // 取最近 2 条：按 rowid 倒序 → cat / book
@@ -91,28 +90,31 @@ int main() {
 
     // ==================== 4. star / unstar / getStars ====================
     {
-        // 首次收藏
-        assert(repo.star("alice", "apple") == stat::Query::Ok);
+        // 首次收藏（StarEntry 三字段：word / mean / time）
+        assert(repo.star("alice", {"apple", "n.苹果", "2026-01-01 10:00:00"})
+                   == stat::Query::Ok);
         // 重复收藏 → Starred
-        assert(repo.star("alice", "apple") == stat::Query::Starred);
+        assert(repo.star("alice", {"apple", "n.苹果", "2026-01-01 10:00:00"})
+                   == stat::Query::Starred);
         // 再收藏两个
-        assert(repo.star("alice", "cat")   == stat::Query::Ok);
-        assert(repo.star("alice", "book")  == stat::Query::Ok);
+        assert(repo.star("alice", {"cat", "n.猫", "2026-01-01 10:01:00"})
+                   == stat::Query::Ok);
+        assert(repo.star("alice", {"book", "n.书", "2026-01-01 10:02:00"})
+                   == stat::Query::Ok);
 
         // 字母序：apple / book / cat
-        std::vector<std::string> stars;
-        auto s = repo.getStars("alice", 10, stars);
-        assert(s == stat::Query::Ok);
+        std::vector<StarEntry> stars;
+        assert(repo.getStars("alice", 10, stars) == stat::Query::Ok);
         assert(stars.size() == 3);
-        assert(stars[0] == "apple");
-        assert(stars[1] == "book");
-        assert(stars[2] == "cat");
+        assert(stars[0].word == "apple" && stars[0].mean == "n.苹果");
+        assert(stars[1].word == "book"  && stars[1].mean == "n.书");
+        assert(stars[2].word == "cat"   && stars[2].mean == "n.猫");
 
         // limit 生效：取前 2
         assert(repo.getStars("alice", 2, stars) == stat::Query::Ok);
         assert(stars.size() == 2);
-        assert(stars[0] == "apple");
-        assert(stars[1] == "book");
+        assert(stars[0].word == "apple");
+        assert(stars[1].word == "book");
 
         // 取消收藏
         assert(repo.unstar("alice", "apple") == stat::Query::Ok);
