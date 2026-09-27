@@ -86,7 +86,7 @@ void Server::run() {
         // 单线程：处理完再 accept 下一个
         handleClient(cfd);
 
-        // 连接关闭，清会话
+        // 连接关闭，清会话（handleClient 外部，防止多出口）
         sessions_.erase(cfd);
 
         ::close(cfd);
@@ -110,38 +110,41 @@ void Server::stop() {
 void Server::handleClient(int cfd) {
     char buf[net::BUF_SIZE];
 
-    // 收一行（第一版：只收一次，不做"攒到 \n"）
-    // 用 sizeof(buf) 而非 sizeof(buf)-1：string_view 不依赖 \0，不必留位
-    ssize_t n = recv(cfd, buf, sizeof(buf), 0);
-    if (n <= 0) {
-        LOG_WARN("recv failed or peer closed");
-        return;
+    // 启动循环服务器
+    while (true) {
+        // 收一行（第一版：只收一次，不做"攒到 \n"）
+        // 用 sizeof(buf) 而非 sizeof(buf)-1：string_view 不依赖 \0，不必留位
+        ssize_t n = recv(cfd, buf, sizeof(buf), 0);
+        if (n <= 0) {
+            LOG_WARN("recv failed or peer closed");
+            return;
+        }
+
+        // string_view 指向 buf，按长度定界（不靠 \0）
+        std::string_view line(buf, static_cast<size_t>(n));
+
+        // 协议：一行不含 \n
+        if (!line.empty() && line.back() == '\n') {
+            line.remove_suffix(1);
+        }
+
+        LOG_INFO("recv: %.*s", static_cast<int>(line.size()), line.data());
+
+        // 1. 解析
+        auto msg = proto::decodeUsr(line);
+        if (!msg) {
+            sendLine(cfd, proto::makeErr("err", "bad request"));
+            continue;
+        }
+
+        // 2. 分发（四类命令；SysCmd 不允许客户端发）
+        std::visit(utils::overloaded {
+            [&](proto::UsrCmd::Dict c) { handleUsrDict(cfd, *msg, c); },
+            [&](proto::UsrCmd::Ctrl c) { handleUsrCtrl(cfd, *msg, c); },
+            [&](proto::SysCmd::Dict)   { sendLine(cfd, proto::makeErr("err", "forbidden")); },
+            [&](proto::SysCmd::Ctrl)   { sendLine(cfd, proto::makeErr("err", "forbidden")); },
+        }, msg->cmd);
     }
-
-    // string_view 指向 buf，按长度定界（不靠 \0）
-    std::string_view line(buf, static_cast<size_t>(n));
-
-    // 协议：一行不含 \n
-    if (!line.empty() && line.back() == '\n') {
-        line.remove_suffix(1);
-    }
-
-    LOG_INFO("recv: %.*s", static_cast<int>(line.size()), line.data());
-
-    // 1. 解析
-    auto msg = proto::decodeUsr(line);
-    if (!msg) {
-        sendLine(cfd, proto::makeErr("err", "bad request"));
-        return;
-    }
-
-    // 2. 分发（四类命令；SysCmd 不允许客户端发）
-    std::visit(utils::overloaded {
-        [&](proto::UsrCmd::Dict c) { handleUsrDict(cfd, *msg, c); },
-        [&](proto::UsrCmd::Ctrl c) { handleUsrCtrl(cfd, *msg, c); },
-        [&](proto::SysCmd::Dict)   { sendLine(cfd, proto::makeErr("err", "forbidden")); },
-        [&](proto::SysCmd::Ctrl)   { sendLine(cfd, proto::makeErr("err", "forbidden")); },
-    }, msg->cmd);
 }
 
 // ---- 发送辅助 ----

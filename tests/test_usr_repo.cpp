@@ -22,40 +22,18 @@ int main() {
     }
     std::cout << "[OK] reg\n";
 
-    // ==================== 2. login / logout ====================
+    // ==================== 2. login ====================
     {
         // 用户不存在
         assert(repo.login("nobody", "x") == stat::UsrOp::NotFound);
-
-        // reg 后 stage 已是 Connected，先登出再测
-        assert(repo.logout("alice") == stat::UsrOp::Ok);
-
         // 密码错
         assert(repo.login("alice", "wrong") == stat::UsrOp::WrongPwd);
-
-        // 正确登录（stage: Disconnected → Connected）
+        // 正确登录
         assert(repo.login("alice", "123") == stat::UsrOp::Ok);
-
-        // 已在线再登录 → Online
-        assert(repo.login("alice", "123") == stat::UsrOp::Online);
-
-        // 登出（stage → Disconnected）
-        assert(repo.logout("alice") == stat::UsrOp::Ok);
-
-        // 隐式验证 stage 已回 Disconnected：
-        //   若 stage 仍 Connected，下面 login 会返回 Online
+        // 重复登录仍 Ok（多设备；在线由 Server 的 sessions_ 管）
         assert(repo.login("alice", "123") == stat::UsrOp::Ok);
-
-        // 再登出 → 成功
-        assert(repo.logout("alice") == stat::UsrOp::Ok);
-
-        // 已离线再登出 → 无行被改 → NotFound
-        assert(repo.logout("alice") == stat::UsrOp::NotFound);
-
-        // 用户不存在 → 无行被改 → NotFound
-        assert(repo.logout("nobody") == stat::UsrOp::NotFound);
     }
-    std::cout << "[OK] login/logout\n";
+    std::cout << "[OK] login\n";
 
     // ==================== 3. 历史 ====================
     {
@@ -90,7 +68,7 @@ int main() {
 
     // ==================== 4. star / unstar / getStars ====================
     {
-        // 首次收藏（StarEntry 三字段：word / mean / time）
+        // 首次收藏
         assert(repo.star("alice", {"apple", "n.苹果", "2026-01-01 10:00:00"})
                    == stat::Query::Ok);
         // 重复收藏 → Starred

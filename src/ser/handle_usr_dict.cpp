@@ -15,6 +15,7 @@ void Server::handleUsrDict(int cfd, const proto::Msg& msg,
         case proto::UsrCmd::Dict::Query:   return doQuery  (cfd, msg);
         case proto::UsrCmd::Dict::History: return doHistory(cfd, msg);
         case proto::UsrCmd::Dict::Star:    return doStar   (cfd, msg);
+        case proto::UsrCmd::Dict::Unstar:  return doUnstar (cfd, msg);
         case proto::UsrCmd::Dict::Pad:     return doPad    (cfd, msg);
     }
 }
@@ -125,6 +126,30 @@ void Server::doStar(int cfd, const proto::Msg& msg) {
 
     // 收藏
     auto st = usr_.star(it->second, e);
+    if (st == stat::Query::Ok) {
+        sendLine(cfd, proto::makeOk());
+    } else {
+        sendLine(cfd, proto::makeErr(proto::Stat2Str(st)));
+    }
+}
+
+/// .unstar <word> —— 取消收藏；回 "ok" / "unstarred"（本来就没收藏）。
+void Server::doUnstar(int cfd, const proto::Msg& msg) {
+    // 会话检查
+    auto it = sessions_.find(cfd);
+    if (it == sessions_.end()) {
+        sendLine(cfd, proto::makeErr("err", "not logged in"));
+        return;
+    }
+
+    // 参数检查
+    if (msg.args.empty()) {
+        sendLine(cfd, proto::makeErr("bad_args"));
+        return;
+    }
+
+    // 取消收藏
+    auto st = usr_.unstar(it->second, msg.args[0]);
     if (st == stat::Query::Ok) {
         sendLine(cfd, proto::makeOk());
     } else {
