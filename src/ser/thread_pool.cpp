@@ -9,7 +9,7 @@
 /// 创建 n 个工作线程。
 /// @throws std::invalid_argument n 不在 1~1024。
 ThreadPool::ThreadPool(std::size_t n) {
-    if (n == 0 || n > 1024) {
+    if (n < MIN_THREADS || n > MAX_THREADS) {
         throw std::invalid_argument("线程数必须在 1~1024");
     }
 

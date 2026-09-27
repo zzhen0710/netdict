@@ -17,7 +17,11 @@ class ThreadPool {
 public:
     using Task = std::function<void()>;   ///< 任务：无参、返回 void
 
-    /// 创建 n 个工作线程；n 必须在 1~1024。
+    /// 线程数上下限
+    static constexpr std::size_t MIN_THREADS = 1;
+    static constexpr std::size_t MAX_THREADS = 1024;
+
+    /// 创建 n 个工作线程；n 必须在 [MIN_THREADS, MAX_THREADS]。
     /// @throws std::invalid_argument n 越界。
     explicit ThreadPool(std::size_t n = 4);
 

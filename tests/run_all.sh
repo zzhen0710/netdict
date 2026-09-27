@@ -35,6 +35,9 @@ declare -A TESTS=(
     [test_usr_repo]="test_usr_repo.cpp ../src/db/usr_repo.cpp"
     [test_thread_pool]="test_thread_pool.cpp ../src/ser/thread_pool.cpp"
     [test_logger]="test_logger.cpp ../src/common/logger.cpp"
+    [test_utils]="test_utils.cpp ../src/common/utils.cpp"
+    [test_utils]="test_utils.cpp ../src/common/utils.cpp"       
+    [test_net]="test_net.cpp ../src/common/net.cpp" 
 )
 
 # ------------------------------------------------------------
