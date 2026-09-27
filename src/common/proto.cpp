@@ -10,10 +10,10 @@ namespace proto {
     /// 把用户字典命令转为小写命令名（如 Query → "query"）。
     std::string_view Cmd2Str(UsrCmd::Dict c) noexcept {
         switch (c) {
-            case UsrCmd::Dict::Query:   return "query";
-            case UsrCmd::Dict::History: return "history";
-            case UsrCmd::Dict::Star:    return "star";
-            case UsrCmd::Dict::Pad:     return "pad";
+            case UsrCmd::Dict::Query:    return "query";
+            case UsrCmd::Dict::History:  return "history";
+            case UsrCmd::Dict::Star:     return "star";
+            case UsrCmd::Dict::Pad:      return "pad";
         }
         return "unknown";
     }
@@ -21,10 +21,10 @@ namespace proto {
     /// 把用户控制命令转为小写命令名（如 Reg → "reg"）。
     std::string_view Cmd2Str(UsrCmd::Ctrl c) noexcept {
         switch (c) {
-            case UsrCmd::Ctrl::Reg:    return "reg";
-            case UsrCmd::Ctrl::Login:  return "login";
-            case UsrCmd::Ctrl::Logout: return "logout";
-            case UsrCmd::Ctrl::Help:   return "help";
+            case UsrCmd::Ctrl::Reg:     return "reg";
+            case UsrCmd::Ctrl::Login:   return "login";
+            case UsrCmd::Ctrl::Logout:  return "logout";
+            case UsrCmd::Ctrl::Help:    return "help";
         }
         return "unknown";
     }
@@ -32,13 +32,13 @@ namespace proto {
     /// 把管理端字典命令转为小写命令名（如 List → "list"）。
     std::string_view Cmd2Str(SysCmd::Dict c) noexcept {
         switch (c) {
-            case SysCmd::Dict::List:   return "list";
-            case SysCmd::Dict::View:   return "view";
-            case SysCmd::Dict::Add:    return "add";
-            case SysCmd::Dict::Del:    return "del";
-            case SysCmd::Dict::Update: return "update";
-            case SysCmd::Dict::Reload: return "reload";
-            case SysCmd::Dict::Num:    return "num";
+            case SysCmd::Dict::List:    return "list";
+            case SysCmd::Dict::View:    return "view";
+            case SysCmd::Dict::Add:     return "add";
+            case SysCmd::Dict::Del:     return "del";
+            case SysCmd::Dict::Update:  return "update";
+            case SysCmd::Dict::Reload:  return "reload";
+            case SysCmd::Dict::Num:     return "num";
         }
         return "unknown";
     }
@@ -46,11 +46,11 @@ namespace proto {
     /// 把管理端控制命令转为小写命令名（如 Stat → "stat"）。
     std::string_view Cmd2Str(SysCmd::Ctrl c) noexcept {
         switch (c) {
-            case SysCmd::Ctrl::Stat:    return "stat";
-            case SysCmd::Ctrl::History: return "history";
-            case SysCmd::Ctrl::Pad:     return "pad";
-            case SysCmd::Ctrl::Help:    return "help";
-            case SysCmd::Ctrl::Log:     return "log";
+            case SysCmd::Ctrl::Stat:     return "stat";
+            case SysCmd::Ctrl::History:  return "history";
+            case SysCmd::Ctrl::Pad:      return "pad";
+            case SysCmd::Ctrl::Help:     return "help";
+            case SysCmd::Ctrl::Log:      return "log";
         }
         return "unknown";
     }
@@ -60,11 +60,12 @@ namespace proto {
     /// 用户操作状态 → 响应首词（如 Ok → "ok"）。
     std::string_view Stat2Str(stat::UsrOp s) noexcept {
         switch (s) {
-            case stat::UsrOp::Ok:       return "ok";
-            case stat::UsrOp::NotFound: return "not_found";
-            case stat::UsrOp::Exists:   return "exists";
-            case stat::UsrOp::WrongPwd: return "wrong_pwd";
-            case stat::UsrOp::Online:   return "online";
+            case stat::UsrOp::Ok:        return "ok";
+            case stat::UsrOp::NotFound:  return "not_found";
+            case stat::UsrOp::Exists:    return "exists";
+            case stat::UsrOp::WrongPwd:  return "wrong_pwd";
+            case stat::UsrOp::Online:    return "online";
+            case stat::UsrOp::Err:       return "err";      // 消 Warnning
         }
         return "err";
     }
@@ -72,8 +73,11 @@ namespace proto {
     /// 查询状态 → 响应首词。
     std::string_view Stat2Str(stat::Query s) noexcept {
         switch (s) {
-            case stat::Query::Ok:       return "ok";
-            case stat::Query::NotFound: return "not_found";
+            case stat::Query::Ok:        return "ok";
+            case stat::Query::NotFound:  return "not_found";
+            case stat::Query::Starred:   return "starred";
+            case stat::Query::Unstarred: return "unstarred";
+            case stat::Query::Err:       return "err";
         }
         return "err";
     }
@@ -81,9 +85,10 @@ namespace proto {
     /// 管理端命令状态 → 响应首词。
     std::string_view Stat2Str(stat::Admin s) noexcept {
         switch (s) {
-            case stat::Admin::Ok:       return "ok";
-            case stat::Admin::BadArgs:  return "bad_args";
-            case stat::Admin::NotFound: return "not_found";
+            case stat::Admin::Ok:        return "ok";
+            case stat::Admin::BadArgs:   return "bad_args";
+            case stat::Admin::NotFound:  return "not_found";
+            case stat::Admin::Err:       return "not_found";
         }
         return "err";
     }

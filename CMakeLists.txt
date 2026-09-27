@@ -35,7 +35,7 @@ find_package(Threads REQUIRED)
 # ---------- 服务器可执行文件 ----------
 add_executable(netdict_server
     src/ser/ser_main.cpp        # 服务器入口 main
-    src/ser/server.cpp          # 服务器主类：监听、分发
+    src/ser/ser.cpp             # 服务器主类：监听、分发
     src/ser/cmd.cpp             # 交互指令
     src/ser/thread_pool.cpp     # 线程池
     src/db/dict_repo.cpp        # 字典仓储
@@ -60,9 +60,14 @@ add_executable(netdict_client
     src/common/proto.cpp
     src/common/utils.cpp        
     src/common/logger.cpp
-    src/common/net_utils.cpp
+    src/common/net.cpp
 )
 
 target_link_libraries(netdict_client PRIVATE
     Threads::Threads
+)
+
+# ---------- 输出目录 ----------
+set_target_properties(netdict_server netdict_client PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
