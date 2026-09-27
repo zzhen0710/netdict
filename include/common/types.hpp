@@ -15,7 +15,6 @@ namespace stat {
         NotFound,       ///< 用户不存在
         Exists,         ///< 用户名已存在
         WrongPwd,       ///< 密码错误
-        Online,         ///< 已在线
         Err,            ///< 未知错误
     };
 
@@ -25,13 +24,6 @@ namespace stat {
         NotFound,       ///< 词未找到
         Starred,        ///< 已经收藏
         Unstarred,      ///< 尚未收藏
-        Err,            ///< 未知错误
-    };
-
-    /// 客户端连接状态
-    enum class Conn : uint8_t {
-        Disconnected,   ///< 断连态
-        Connected,      ///< 连接态
         Err,            ///< 未知错误
     };
 
