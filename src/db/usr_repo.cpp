@@ -80,7 +80,7 @@ stat::UsrOp UsrRepo::login(const std::string& name, const std::string& pwd) {
     if (!db_pwd || pwd != reinterpret_cast<const char*>(db_pwd))
         return stat::UsrOp::WrongPwd;
 
-    // 已在线则拒绝重复登录
+    // 已在线则拒绝重复登录，仍保持在线状态
     int stage = sqlite3_column_int(stmt.get(), 1);
     if (stage == static_cast<int>(stat::Conn::Connected))
         return stat::UsrOp::Online;

@@ -36,7 +36,7 @@ int main() {
         // 正确登录（stage: Disconnected → Connected）
         assert(repo.login("alice", "123") == stat::UsrOp::Ok);
 
-        // 已在线再登录 → Online
+        // 已在线再登录 → 保持 Online
         assert(repo.login("alice", "123") == stat::UsrOp::Online);
 
         // 登出（stage → Disconnected）

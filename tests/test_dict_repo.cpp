@@ -95,5 +95,6 @@ int main() {
 
     std::cout << "[OK] dict_repo\n";
     std::cout << "ALL OK\n";
+    
     return 0;
 }

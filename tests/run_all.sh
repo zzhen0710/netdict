@@ -3,7 +3,7 @@
 #  run_all.sh — 编译并运行 tests/ 下的单元测试
 # ============================================================
 #
-#  用法：
+#  用法：（tests目录下）
 #    ./run_all.sh              # 跑全部测试
 #    ./run_all.sh test_proto   # 只跑 test_proto
 #    ./run_all.sh list         # 列出所有测试名
@@ -33,6 +33,7 @@ declare -A TESTS=(
     [test_proto]="test_proto.cpp ../src/common/proto.cpp"
     [test_dict_repo]="test_dict_repo.cpp ../src/db/dict_repo.cpp"
     [test_usr_repo]="test_usr_repo.cpp ../src/db/usr_repo.cpp"
+    [test_thread_pool]="test_thread_pool.cpp ../src/ser/thread_pool.cpp"
 )
 
 # ------------------------------------------------------------
@@ -43,13 +44,14 @@ run_one() {
     local name=$1
     local srcs=(${TESTS[$name]})         # 按空格拆成数组
     echo "=== building $name ==="
+    # 编译：C++17 + 警告 + 头文件 + 源文件 + 链接 sqlite3/pthread
     g++ -std=c++17 -Wall -Wextra \
         -I../include \
         "${srcs[@]}" \
-        -lsqlite3 \
-        -o "/tmp/$name"
+        -lsqlite3 -pthread \
+        -o "/tmp/$name"                  # 输出可执行文件
     echo "=== running  $name ==="
-    "/tmp/$name"
+    "/tmp/$name"                         # 运行
 }
 
 # ------------------------------------------------------------
