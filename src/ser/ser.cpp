@@ -36,8 +36,8 @@ Server::Server(DictRepo& dict, UsrRepo& usr,
 
     // 3. 构造本机地址（sockaddr_in 用 {} 清零，避免 sin_zero 未初始化警告）
     sockaddr_in addr{};
-    addr.sin_family      = AF_INET;
-    addr.sin_port        = htons(static_cast<uint16_t>(port_));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(static_cast<uint16_t>(port_));
     addr.sin_addr.s_addr = inet_addr(ip_.c_str());
 
     // 4. bind
