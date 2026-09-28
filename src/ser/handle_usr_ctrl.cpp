@@ -22,8 +22,16 @@ void Server::handleUsrCtrl(int cfd, const proto::Msg& msg,
 
 // ---- 各命令 ----
 
-/// .reg <name> <pwd> —— 注册；成功后自动登录（记会话）。
+/// .reg <name> <pwd> —— 注册；成功后自动登录。
+/// 已登录用户不允许再注册（需先 .logout）。
 void Server::doReg(int cfd, const proto::Msg& msg) {
+    // 已登录：拦
+    if (sessions_.count(cfd)) {
+        sendLine(cfd, proto::makeErr("err", "already logged in"));
+        return;
+    }
+
+    // 参数：<name> <pwd>（先查数量，避免 args[1] 越界 → UB）
     if (msg.args.size() < 2) {
         sendLine(cfd, proto::makeErr("bad_args"));
         return;
@@ -32,14 +40,22 @@ void Server::doReg(int cfd, const proto::Msg& msg) {
     auto st = usr_.reg(msg.args[0], msg.args[1]);
     if (st == stat::UsrOp::Ok) {
         sessions_[cfd] = msg.args[0];   // 注册即登录
-        sendLine(cfd, proto::makeOk());
+        sendLine(cfd, proto::makeOk("welcome, " + msg.args[0]));
     } else {
         sendLine(cfd, proto::makeErr(proto::Stat2Str(st)));
     }
 }
 
 /// .login <name> <pwd> —— 登录；成功后记会话。
+/// 已登录用户不允许再登录（需先 .logout）。
 void Server::doLogin(int cfd, const proto::Msg& msg) {
+    // 已登录：拦
+    if (sessions_.count(cfd)) {
+        sendLine(cfd, proto::makeErr("err", "already logged in"));
+        return;
+    }
+
+    // 参数：<name> <pwd>（先查数量，避免 args[1] 越界 → UB）
     if (msg.args.size() < 2) {
         sendLine(cfd, proto::makeErr("bad_args"));
         return;
@@ -48,7 +64,7 @@ void Server::doLogin(int cfd, const proto::Msg& msg) {
     auto st = usr_.login(msg.args[0], msg.args[1]);
     if (st == stat::UsrOp::Ok) {
         sessions_[cfd] = msg.args[0];   // 记会话
-        sendLine(cfd, proto::makeOk());
+        sendLine(cfd, proto::makeOk("welcome, " + msg.args[0]));
     } else {
         sendLine(cfd, proto::makeErr(proto::Stat2Str(st)));
     }
@@ -93,6 +109,7 @@ void Server::doHelp(int cfd, const proto::Msg& msg) {
         "[misc]",
         "  .help                   show this help",
         "  .quit / .exit           quit",
+        "",
     };
 
     sendLine(cfd, proto::makeOk(std::to_string(sizeof(lines) / sizeof(lines[0]))));
