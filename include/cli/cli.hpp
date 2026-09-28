@@ -31,19 +31,16 @@ private:
     /// 读一行用户输入（含空格）；EOF 返回 false。
     bool readUsrLine(std::string& line);
 
-    /// 处理并发送用户输入：去前导 "."；空行返回 false。
+    /// 处理并发送用户输入：要求前导 "." 并去前导 "."；空行返回 false。
     /// @return 是否已发送
     bool sendRequest(std::string_view usr_req);
 
-    /// 收一行响应（阻塞，攒到 \n 或对端关闭）。
-    /// @return 收到的一行（不含 \n）；对端关闭 / 出错返回空串
-    std::string recvLine();
-
-    /// 处理响应：解析 ok / err；ok <n> 时再读 n 行并显示。
-    void handleResp();
+    /// 处理响应：解析 ok / err；ok <n> 时再读 n 行并显示。返回是否成功（ok）。
+    bool handleResp();
 
     /// 打印一行（stdout）。
     void printLine(std::string_view s);
 
-    int sock_fd_;   ///< 连接套接字
+    std::string recv_buf_;     ///< 接收缓冲（攒到 \n）
+    int sock_fd_;              ///< 连接套接字
 };
