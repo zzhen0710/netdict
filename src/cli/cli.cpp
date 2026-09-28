@@ -5,6 +5,21 @@
 #include "common/logger.hpp"
 #include "common/proto.hpp"
 
+/* linenoise.h — 轻量命令行编辑库
+ *
+ * 来源：https://github.com/antirez/linenoise
+ * 许可：BSD-2-Clause（见源码头注释）
+ * 用途：为本项目 cli 提供行编辑 + 历史（上下键翻）
+ *
+ * 本项目只用到的接口：
+ *   linenoise(prompt)       读一行；返回 malloc 串（或 nullptr）
+ *   linenoiseFree(p)        释放 linenoise 返回的串
+ *   linenoiseHistoryAdd(s)  把一行加入内存历史（供 ↑/↓）
+ *
+ * 改动：无（原文件）
+ */
+#include "linenoise.h"
+
 #include <arpa/inet.h>      // inet_addr
 #include <netinet/in.h>     // sockaddr_in
 #include <sys/socket.h>     // socket, connect, recv
@@ -13,6 +28,26 @@
 #include <cstring>          // memset
 #include <iostream>
 #include <stdexcept>        // std::runtime_error
+
+// ------- 文件内常量 -------
+namespace {
+
+    /// linenoise 历史内存上限：超出的最旧记录被淘汰（环形）。
+    /// 退出 Save 全量覆盖写文件，文件行数 ≤ 此值。
+    constexpr int kHistoryMaxLen = 100;
+
+    /// 历史文件：家目录下（用户级数据，不随 cwd / 项目走）。
+    constexpr const char* kHistoryFile = "/.netdict_history";
+
+    /// 返回 linenoise 历史文件路径：~/.netdict_history。
+    /// 历史是用户级数据，放家目录（不随 cwd / 项目）；无 HOME 兜底当前目录。
+    std::string historyPath() {
+        const char* home = std::getenv("HOME");
+        return home ? std::string(home) + kHistoryFile
+                    : std::string(".") + kHistoryFile;
+    }
+
+}   // namespace
 
 /// 构造：创建 socket 并连接服务器。
 Cli::Cli(std::string_view ip, int port)
@@ -38,10 +73,18 @@ Cli::Cli(std::string_view ip, int port)
 
     LOG_DEBUG("connected to %.*s:%d",
          static_cast<int>(ip.size()), ip.data(), port);
+
+    // 历史：内存最多 kHistoryMaxLen 条（超出的最旧淘汰）；
+    // 退出时 Save 全量覆盖写文件（非追加），文件行数 ≤ kHistoryMaxLen。
+    linenoiseHistorySetMaxLen(kHistoryMaxLen);
+    linenoiseHistoryLoad(historyPath().c_str());
 }
 
-/// 析构：关闭 socket。
+/// 析构：保存历史；关闭 socket。
 Cli::~Cli() {
+    // 退出前保存历史（全量覆盖）；下次启动 Load 可 ↑ 翻。
+    linenoiseHistorySave(historyPath().c_str());
+    
     if (sock_fd_ >= 0) {
         ::close(sock_fd_);
     }
@@ -84,12 +127,23 @@ void Cli::stop() {
     running_ = false;
 }
 
-/// 读一行用户输入；EOF 返回 false。
+/// 读一行用户输入；EOF / Ctrl+C 返回 false。
+/// 用 linenoise：支持行编辑、上下键翻历史。
 bool Cli::readUsrLine(std::string& line) {
-    // 打印提示符并立即刷新
-    std::cout << "netdict> " << std::flush;
-    // getline 返回流状态，转 bool：成功 true，EOF false
-    return static_cast<bool>(std::getline(std::cin, line));
+    // linenoise(prompt)：打印提示符，读一行；内部处理行编辑 / 上下键。
+    //   - 返回 malloc 出的 C 串，需 linenoiseFree 释放；
+    //   - EOF（Ctrl+D）或 Ctrl+C 中止时返回 nullptr。
+    char* raw = linenoise("netdict> ");
+    if (!raw) return false;
+
+    line = raw;                                 // C 串 → std::string（拷贝）
+
+    // 加入内存历史，之后可用 ↑ / ↓ 翻。空行不入。
+    if (!line.empty()) linenoiseHistoryAdd(raw);
+
+    linenoiseFree(raw);                         // 释放 linenoise 内部 malloc
+
+    return true;
 }
 
 /// 处理并发送用户输入：必须 "." 开头；否则打提示。
