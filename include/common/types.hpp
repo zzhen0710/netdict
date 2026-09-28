@@ -15,7 +15,7 @@ namespace stat {
         NotFound,       ///< 用户不存在
         Exists,         ///< 用户名已存在
         WrongPwd,       ///< 密码错误
-        Err,            ///< 未知错误
+        Err,            ///< 其他错误
     };
 
     /// 查词操作
@@ -24,7 +24,7 @@ namespace stat {
         NotFound,       ///< 词未找到
         Starred,        ///< 已经收藏
         Unstarred,      ///< 尚未收藏
-        Err,            ///< 未知错误
+        Err,            ///< 其他错误
     };
 
     /// 管理终端（cmd）命令执行状态
@@ -32,7 +32,7 @@ namespace stat {
         Ok,             ///< cmd 成功执行
         BadArgs,        ///< 参数错误
         NotFound,       ///< 指令未找到
-        Err,            ///< 未知错误
+        Err,            ///< 其他错误
     };
 
 }   // namespace stat
