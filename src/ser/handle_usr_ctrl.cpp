@@ -110,6 +110,14 @@ void Server::doHelp(int cfd, const proto::Msg& msg) {
         "  .help                   show this help",
         "  .quit / .exit           quit",
         "",
+        "[edit]",
+        "  ← / →                   move cursor",
+        "  Home / End (Ctrl+A/E)   line start / end",
+        "  Backspace / Delete      delete char",
+        "  Ctrl+W                  delete word",
+        "  Ctrl+U                  clear line",
+        "  ↑ / ↓                   history",
+        "",
     };
 
     sendLine(cfd, proto::makeOk(std::to_string(sizeof(lines) / sizeof(lines[0]))));
