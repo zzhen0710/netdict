@@ -13,14 +13,18 @@
 #include "db/dict_repo.hpp"
 #include "db/usr_repo.hpp"
 
-#include <csignal>
+#include <csignal>      // std::signal
 #include <exception>    // std::exception 基类
 #include <unistd.h>     // write
 
 // 全局指针，供信号处理函数调 stop（signal handler 不能捕获复杂状态）
 static Server* g_server = nullptr;
 
-/// 信号处理：请求 Server 停止；write 一个换行（异步信号安全，让 ^C 后另起一行）。
+/// 信号处理：请求 Server 停止，并补一个换行（让 ^C 后另起一行）。
+//  为什么只用 g_server->stop() 和 write：
+//   - signal handler 里"只能调'异步信号安全'函数"（如 write）；
+//   - printf / fprintf / std::cout 不是（内部有锁 / 缓冲），可能死锁；
+//   - write 是 POSIX 明确列出的异步信号安全函数。
 static void onSignal(int) {
     if (g_server) g_server->stop();
     const char nl = '\n';
@@ -54,5 +58,6 @@ int main(int argc, char* argv[]) {
         LOG_ERR("fatal: %s", e.what());
         return 1;
     }
+
     return 0;
 }

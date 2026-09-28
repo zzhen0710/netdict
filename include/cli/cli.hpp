@@ -24,8 +24,13 @@ public:
     Cli(const Cli&) = delete;
     Cli& operator=(const Cli&) = delete;
 
-    /// 主循环：读 stdin → 发请求 → 收响应 → 显示；直到 EOF 或服务器断开。
+    /// 主循环：读 stdin → 发请求 → 收响应 → 显示。
+    /// 直到 EOF（Ctrl+D）或 stop()（信号）；单线程，信号 handler 同线程改 running_。
     void run();
+
+    /// 请求停止：置 running_ = false（信号处理调）。
+    /// 单线程；注意 getline 阻塞，停止最快"下次回车"生效。
+    void stop();
 
 private:
     /// 读一行用户输入（含空格）；EOF 返回 false。
@@ -41,6 +46,7 @@ private:
     /// 打印一行（stdout）。
     void printLine(std::string_view s);
 
-    std::string recv_buf_;     ///< 接收缓冲（攒到 \n）
-    int sock_fd_;              ///< 连接套接字
+    std::string recv_buf_;      ///< 接收缓冲（攒到 \n）
+    int sock_fd_;               ///< 连接套接字
+    bool running_{false};       ///< 运行标志（单线程；信号 handler 同线程改）
 };

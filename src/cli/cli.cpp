@@ -49,12 +49,14 @@ Cli::~Cli() {
 
 /// 主循环：读 stdin → 发请求 → 收响应 → 显示。
 void Cli::run() {
+    running_ = true;
+
     printLine("welcome to netdict client");
     printLine("type .help for commands, Ctrl+D to quit");
 
     std::string line;
     // 读一行 → 空行跳过 → 发送 → 收响应；EOF 退出
-    while (readUsrLine(line)) {
+    while (running_ && readUsrLine(line)) {
         LOG_DEBUG("cmd: %.*s", static_cast<int>(line.size()), line.data());
 
         if (line.empty()) continue;
@@ -75,6 +77,11 @@ void Cli::run() {
     }
 
     LOG_DEBUG("client exit");
+}
+
+/// 请求停止：置 running_ = false（信号处理调）。
+void Cli::stop() {
+    running_ = false;
 }
 
 /// 读一行用户输入；EOF 返回 false。
