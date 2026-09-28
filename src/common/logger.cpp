@@ -9,10 +9,6 @@ namespace logger {
 
 Level g_level = Level::Info;   // 默认 INFO
 
-void setLevel(Level lv) {
-    g_level = lv;
-}
-
 bool parseLevel(const char* s, Level& out) {
     if (std::strcmp(s, "debug") == 0) { out = Level::Debug; return true; }
     if (std::strcmp(s, "info")  == 0) { out = Level::Info;  return true; }

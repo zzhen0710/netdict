@@ -8,22 +8,29 @@
 
 namespace logger {
 
-/// 日志等级（从细到粗）
-enum class Level {
-    Debug,
-    Info,
-    Warn,
-    Err,
-};
+    /// 日志等级（从细到粗）
+    enum class Level {
+        Debug,
+        Info,
+        Warn,
+        Err,
+    };
 
-/// 全局等级；低于此等级的日志被丢弃
-extern Level g_level;
+    /// 全局等级；低于此等级的日志被丢弃
+    extern Level g_level;
 
-/// 设置等级
-void setLevel(Level lv);
+    /// 设置等级
+    inline void setLevel(Level lv) noexcept {
+        g_level = lv;
+    }
 
-/// 解析字符串（如 "debug" / "info"）→ 等级；失败返回 false
-bool parseLevel(const char* s, Level& out);
+    /// 运行期判：该级别是否输出（宏内部也用；调用者可据此跳过"为日志的取数"）。
+    inline bool enabled(Level lv) noexcept {
+        return g_level <= lv;
+    }
+
+    /// 解析字符串（如 "debug" / "info"）→ 等级；失败返回 false
+    bool parseLevel(const char* s, Level& out);
 
 }   // namespace logger
 
