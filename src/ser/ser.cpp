@@ -83,16 +83,24 @@ void Server::run() {
         }
 
         // 2. 记录客户端地址（inet_ntoa 转 IP，ntohs 转端口）
-        LOG_INFO("client connected: %s:%d",
-                 inet_ntoa(cli.sin_addr), ntohs(cli.sin_port));
+        LOG_INFO("client connected: %s:%d (fd = %d)",
+                inet_ntoa(cli.sin_addr), ntohs(cli.sin_port), cfd);
 
         // 3. 把连接交给线程池处理：handleClient → 清会话 → 关 fd
         thread_pool_.addTask([this, cfd] {
             handleClient(cfd);              // 处理该连接的请求
+
+            // 先取用户名（sessionErase 前），供 disconnected 日志用
+            // 只为 disconnected 日志取 usr；Info 关时不取（零开销）
+            if (logger::enabled(logger::Level::Info)) {
+                auto name = sessionGet(cfd);
+                const std::string usr = name ? *name : "-";
+                LOG_INFO("client disconnected: fd = %d, usr = %s", cfd, usr.c_str());
+            }
+
             // 连接关闭，清会话（handleClient 外部，防止多出口）
             sessionErase(cfd);              // 加锁清该连接的会话
             ::close(cfd);                   // 关连接
-            LOG_INFO("client disconnected: fd = %d", cfd);
         });
     }
 }
@@ -118,11 +126,21 @@ void Server::handleClient(int cfd) {
     while (true) {
         // 收一行（net::recvLine：从 recv_buf_ 切；不足时再 recv）
         if (!net::recvLine(cfd, recv_buf_, line)) {
-            LOG_INFO("peer closed");
+            // 取用户名，供日志
+            if (logger::enabled(logger::Level::Info)) {
+                auto name = sessionGet(cfd);
+                LOG_INFO("peer closed: fd = %d, usr = %s",
+                        cfd, name ? name->c_str() : "-");
+            }
             break;
         }
 
-        LOG_INFO("recv: %.*s", static_cast<int>(line.size()), line.data());
+        if (logger::enabled(logger::Level::Info)) {
+            auto name = sessionGet(cfd);
+            const char* who = name ? name->c_str() : "-";
+            LOG_INFO("recv: fd = %d, usr = %s, data = %.*s",
+                    cfd, who, static_cast<int>(line.size()), line.data());
+        }
 
         // 1. 解析
         auto msg = proto::decodeUsr(line);
@@ -150,7 +168,11 @@ std::optional<std::string> Server::sessionGet(int cfd) {
 
     // 查 cfd；不在则未登录
     auto it = sessions_.find(cfd);
-    if (it == sessions_.end()) return std::nullopt;
+    if (it == sessions_.end()) {
+        LOG_DEBUG("sessionGet: fd = %d not found", cfd);
+        return std::nullopt;
+    }
+    LOG_DEBUG("sessionGet: fd = %d usr = %s", cfd, it->second.c_str());
 
     return it->second;
 }
@@ -159,17 +181,19 @@ std::optional<std::string> Server::sessionGet(int cfd) {
 void Server::sessionSet(int cfd, const std::string& name) {
     // 加锁：写入 sessions_
     std::lock_guard<std::mutex> lk(sessions_mtx_);
-
     // 覆盖 / 新建该 cfd 的会话
     sessions_[cfd] = name;
+
+    LOG_DEBUG("sessionSet: fd = %d usr = %s", cfd, name.c_str());
 }
 
 /// 登出 / 连接关：清 cfd 会话
 void Server::sessionErase(int cfd) {
     // 加锁：删除 sessions_ 条目
     std::lock_guard<std::mutex> lk(sessions_mtx_);
-
     sessions_.erase(cfd);
+
+    LOG_DEBUG("sessionErase: fd = %d", cfd);
 }
 
 // ---- 发送辅助 ----
@@ -186,5 +210,13 @@ void Server::sendLine(int cfd, std::string_view line) {
     // 拼出 "line\n"；std::string 拥有内容，传给 sendAll
     std::string out(line);
     out += '\n';
+
+    if (logger::enabled(logger::Level::Debug)) {
+        auto name = sessionGet(cfd);
+        const char* who = name ? name->c_str() : "-";
+        LOG_DEBUG("send: fd = %d, usr = %s, data = %.*s",
+                cfd, who, static_cast<int>(line.size()), line.data());
+    }
+    
     sendBytes(cfd, out);
 }
