@@ -71,8 +71,8 @@ namespace proto {
 
     /// 一条消息：命令 + 参数列表
     struct Msg {
-        Cmd cmd = UsrCmd::Dict::Query;    ///< 命令（默认占位）
-        std::vector<std::string> args;    ///< 参数列表
+        Cmd cmd = UsrCmd::Dict::Query;    ///< 命令，合法初值，保证变量从声明起就有效 RAII
+        std::vector<std::string> args;    ///< 参数列表（变长）
     };
 
     /// 命令 → 字符串：返回不带点的纯命令名（如 "query"）
@@ -93,8 +93,15 @@ namespace proto {
 
     /// 响应：成功 "ok [data]"，失败 "<stat_name> [reason]"
     [[nodiscard]] bool isOk(std::string_view line) noexcept;
+    
+    /// 取首词（状态名）："ok" / "not_found" / "err" / ...
     [[nodiscard]] std::string_view respStat(std::string_view line) noexcept;
+    /// 取"ok "之后的数据部分；非 ok 响应返回空。
     [[nodiscard]] std::string_view respData(std::string_view line) noexcept;
+    /// 取首词之后的部分（"<stat> <reason>" 里的 reason）；无则空。
+    /// 用于 err / not_found / ... 等非 ok 响应，从中提取原因。
+    [[nodiscard]] std::string_view respReason(std::string_view line) noexcept;
+
     [[nodiscard]] std::string makeOk(std::string_view data = "");
     [[nodiscard]] std::string makeErr(std::string_view stat_name,
                                       std::string_view reason = "");

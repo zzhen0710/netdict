@@ -220,6 +220,13 @@ namespace proto {
         return line.substr(3);
     }
 
+    /// 取首词之后的部分（"<stat> <reason>" 里的 reason）；无则空。
+    std::string_view respReason(std::string_view line) noexcept {
+        auto pos = line.find(' ');
+        if (pos == std::string_view::npos) return "";
+        return line.substr(pos + 1);
+    }
+
     /// 构造成功响应："ok [data]"；data 为空时为 "ok"。
     std::string makeOk(std::string_view data) {
         if (data.empty()) return "ok";
