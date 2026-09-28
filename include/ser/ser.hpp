@@ -3,13 +3,18 @@
 
 #pragma once
 
+#include "ser/thread_pool.hpp"
 #include "common/net.hpp"       // net::DEFAULT_IP / DEFAULT_PORT
 #include "common/proto.hpp"     // proto::Msg / proto::UsrCmd
 #include "db/dict_repo.hpp"
 #include "db/usr_repo.hpp"
+
+#include <mutex>
+#include <optional>
+#include <unordered_map>        // std::unordered_map
+
 #include <string>               
 #include <string_view>
-#include <unordered_map>        // std::unordered_map
 
 /// TCP 服务器：单线程 accept 循环，处理完一个客户端再收下一个。
 /// 第一版只做"收一行 → 解码 → 分发"；业务在 handleUsrDict / handleUsrCtrl。
@@ -47,32 +52,38 @@ private:
     /// 发送一行（自动补 \n）；行协议专用。
     void sendLine(int cfd, std::string_view line);
 
-    // ---- 用户命令：分发 + 细粒度实现 ----
-
-    // 用户字典命令：query / history / star / unstar / pad
+    /// ---- 字典：query / history / star / unstar / pad ----
     void handleUsrDict(int cfd, const proto::Msg& msg, proto::UsrCmd::Dict c);
     void doQuery  (int cfd, const proto::Msg& msg);
     void doHistory(int cfd, const proto::Msg& msg);
     void doStar   (int cfd, const proto::Msg& msg);
     void doUnstar (int cfd, const proto::Msg& msg);
-    void doPad    (int cfd, const proto::Msg& msg);     
+    void doPad    (int cfd, const proto::Msg& msg);
 
-    // 用户控制命令：reg / login / logout / help / quit
+    /// ---- 控制：reg / login / logout / help / quit ----
     void handleUsrCtrl(int cfd, const proto::Msg& msg, proto::UsrCmd::Ctrl c);
     void doReg   (int cfd, const proto::Msg& msg);
     void doLogin (int cfd, const proto::Msg& msg);
     void doLogout(int cfd, const proto::Msg& msg);
-    void doHelp  (int cfd, const proto::Msg& msg);      // 对齐签名
+    void doHelp  (int cfd, const proto::Msg& msg);
     void doQuit  (int cfd, const proto::Msg& msg);
 
-    // ---- 依赖（不拥有，引用） ----
+    /// ---- 会话：查 / 记 / 清 ----
+    std::optional<std::string> sessionGet(int cfd);
+    void sessionSet(int cfd, const std::string& name);
+    void sessionErase(int cfd);
+
+    /// ---- 依赖（不拥有，引用） ----
     DictRepo& dict_;          ///< 字典数据表
     UsrRepo&  usr_;           ///< 用户数据表
     
-    // ---- 会话：cfd → 当前登录用户名 ----
+    /// ---- 会话：cfd → 当前登录用户名 ----
     std::unordered_map<int, std::string> sessions_;
+    std::mutex sessions_mtx_;
 
-    // ---- 自身状态 ----
+    /// ---- 自身状态 ----
+    ThreadPool  thread_pool_;   ///< 并发处理客户端
+    std::string recv_buf_;    ///< 接收缓冲（跨 recvLine 调用累积）
     int         listen_fd_;   ///< 监听套接字
     std::string ip_;          ///< 监听 IP（string_view 转存）
     int         port_;        ///< 监听端口

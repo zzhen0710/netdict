@@ -22,7 +22,8 @@
 Server::Server(DictRepo& dict, UsrRepo& usr,
                std::string_view ip, int port)
     : dict_(dict), usr_(usr),
-      listen_fd_(-1), ip_(ip), port_(port), running_(false) {
+      thread_pool_(4), listen_fd_(-1),
+      ip_(ip), port_(port), running_(false) {   // 列表初始化顺序要和成员变量声明顺序一致
 
     // 1. 创建 TCP 套接字
     listen_fd_ = socket(AF_INET, SOCK_STREAM, 0);
@@ -66,13 +67,14 @@ Server::~Server() {
 
 /// 启动：阻塞 accept 循环。
 void Server::run() {
-    running_ = true;
+    running_ = true;                    // 置运行标志，进入主循环
 
+    // 主循环：只要 running_ 为真，就一直收连接
     while (running_) {
-        sockaddr_in cli{};
+        sockaddr_in cli{};              // 存客户端地址（{} 清零）
         socklen_t   cli_len = sizeof(cli);
 
-        // 收一个连接
+        // 1. 阻塞收一个连接；失败（如被 stop 唤醒）则跳过
         int cfd = accept(listen_fd_,
                          reinterpret_cast<sockaddr*>(&cli), &cli_len);
         if (cfd < 0) {
@@ -80,18 +82,18 @@ void Server::run() {
             continue;
         }
 
+        // 2. 记录客户端地址（inet_ntoa 转 IP，ntohs 转端口）
         LOG_INFO("client connected: %s:%d",
                  inet_ntoa(cli.sin_addr), ntohs(cli.sin_port));
 
-        // 单线程：处理完再 accept 下一个
-        handleClient(cfd);
-
-        // 连接关闭，清会话（handleClient 外部，防止多出口）
-        sessions_.erase(cfd);
-
-        ::close(cfd);
-
-        LOG_INFO("client disconnected");
+        // 3. 把连接交给线程池处理：handleClient → 清会话 → 关 fd
+        thread_pool_.addTask([this, cfd] {
+            handleClient(cfd);              // 处理该连接的请求
+            // 连接关闭，清会话（handleClient 外部，防止多出口）
+            sessionErase(cfd);              // 加锁清该连接的会话
+            ::close(cfd);                   // 关连接
+            LOG_INFO("client disconnected: fd = %d", cfd);
+        });
     }
 }
 
@@ -102,30 +104,22 @@ void Server::stop() {
         ::close(listen_fd_);
         listen_fd_ = -1;
     }
+    thread_pool_.stop();    // ← 主动等池子
 }
 
 //  ---- 单个客户端处理 ----
 
 /// 处理单个客户端：收一行 → decodeUsr → visit 分发 → 回一行。
 void Server::handleClient(int cfd) {
-    char buf[net::BUF_SIZE];
+    recv_buf_.clear();   // 进入新连接，清上次残留
 
+    std::string line;
     // 启动循环服务器
     while (true) {
-        // 收一行（第一版：只收一次，不做"攒到 \n"）
-        // 用 sizeof(buf) 而非 sizeof(buf)-1：string_view 不依赖 \0，不必留位
-        ssize_t n = recv(cfd, buf, sizeof(buf), 0);
-        if (n <= 0) {
-            LOG_WARN("recv failed or peer closed");
-            return;
-        }
-
-        // string_view 指向 buf，按长度定界（不靠 \0）
-        std::string_view line(buf, static_cast<size_t>(n));
-
-        // 协议：一行不含 \n
-        if (!line.empty() && line.back() == '\n') {
-            line.remove_suffix(1);
+        // 收一行（net::recvLine：从 recv_buf_ 切；不足时再 recv）
+        if (!net::recvLine(cfd, recv_buf_, line)) {
+            LOG_INFO("peer closed");
+            break;
         }
 
         LOG_INFO("recv: %.*s", static_cast<int>(line.size()), line.data());
@@ -145,6 +139,37 @@ void Server::handleClient(int cfd) {
             [&](proto::SysCmd::Ctrl)   { sendLine(cfd, proto::makeErr("err", "forbidden")); },
         }, msg->cmd);
     }
+}
+
+// ---- 临界区会话管理 ----
+
+/// 查该 cfd 的用户名；未登录返回 nullopt
+std::optional<std::string> Server::sessionGet(int cfd) {
+    // 加锁：sessions_ 可能被多线程（accept、handleClient）访问
+    std::lock_guard<std::mutex> lk(sessions_mtx_);
+
+    // 查 cfd；不在则未登录
+    auto it = sessions_.find(cfd);
+    if (it == sessions_.end()) return std::nullopt;
+
+    return it->second;
+}
+
+/// 登录 / 注册成功：记 cfd → name
+void Server::sessionSet(int cfd, const std::string& name) {
+    // 加锁：写入 sessions_
+    std::lock_guard<std::mutex> lk(sessions_mtx_);
+
+    // 覆盖 / 新建该 cfd 的会话
+    sessions_[cfd] = name;
+}
+
+/// 登出 / 连接关：清 cfd 会话
+void Server::sessionErase(int cfd) {
+    // 加锁：删除 sessions_ 条目
+    std::lock_guard<std::mutex> lk(sessions_mtx_);
+
+    sessions_.erase(cfd);
 }
 
 // ---- 发送辅助 ----
