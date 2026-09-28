@@ -25,15 +25,15 @@ void Server::handleUsrCtrl(int cfd, const proto::Msg& msg,
 /// .reg <name> <pwd> —— 注册；成功后自动登录。
 /// 已登录用户不允许再注册（需先 .logout）。
 void Server::doReg(int cfd, const proto::Msg& msg) {
-    // 已登录：拦
-    if (sessions_.count(cfd)) {
-        sendLine(cfd, proto::makeErr("err", "already logged in"));
-        return;
-    }
-
     // 参数：<name> <pwd>（先查数量，避免 args[1] 越界 → UB）
     if (msg.args.size() < 2) {
         sendLine(cfd, proto::makeErr("bad_args"));
+        return;
+    }
+
+    // 已登录：拦
+    if (sessions_.count(cfd)) {
+        sendLine(cfd, proto::makeErr("err", "already logged in"));
         return;
     }
 
@@ -49,15 +49,15 @@ void Server::doReg(int cfd, const proto::Msg& msg) {
 /// .login <name> <pwd> —— 登录；成功后记会话。
 /// 已登录用户不允许再登录（需先 .logout）。
 void Server::doLogin(int cfd, const proto::Msg& msg) {
-    // 已登录：拦
-    if (sessions_.count(cfd)) {
-        sendLine(cfd, proto::makeErr("err", "already logged in"));
-        return;
-    }
-
     // 参数：<name> <pwd>（先查数量，避免 args[1] 越界 → UB）
     if (msg.args.size() < 2) {
         sendLine(cfd, proto::makeErr("bad_args"));
+        return;
+    }
+
+    // 已登录：拦
+    if (sessions_.count(cfd)) {
+        sendLine(cfd, proto::makeErr("err", "already logged in"));
         return;
     }
 
