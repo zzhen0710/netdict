@@ -3,8 +3,8 @@
 # CMake 最低版本要求（3.12 CMAKE_CXX_STANDARD）
 cmake_minimum_required(VERSION 3.12)
 
-# 项目名 + 语言（CXX 表示只启用 C++）
-project(netdict CXX)
+# 项目名 + 语言（C CXX 表示启用 C & C++）
+project(netdict C CXX)
 
 # 让 CMake 生成 compile_commands.json，供 clangd/IntelliSense 等工具读取
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -31,6 +31,16 @@ include_directories(${CMAKE_SOURCE_DIR}/include)
 find_package(SQLite3 REQUIRED)
 # 查找线程库（提供 Threads::Threads 目标）
 find_package(Threads REQUIRED)
+
+# ---------- 第三方静态库 ----------
+# linenoise：轻量命令行编辑（历史、行编辑）
+add_library(linenoise STATIC
+    third_party/linenoise.c
+)
+# 库使用者能 #include "linenoise.h"（PUBLIC：向外传递头路径）
+target_include_directories(linenoise PUBLIC
+    third_party
+)
 
 # ---------- 服务器可执行文件 ----------
 add_executable(netdict_server
@@ -67,6 +77,7 @@ add_executable(netdict_client
 
 target_link_libraries(netdict_client PRIVATE
     Threads::Threads
+    linenoise
 )
 
 # ---------- 输出目录 ----------
