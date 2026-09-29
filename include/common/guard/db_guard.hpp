@@ -16,6 +16,10 @@
 ///   - 允许移动（所有权转移，源对象被置 nullptr，析构无操作）
 class DbGuard {
 public:
+    /// @brief 默认构造：空守卫（pdb_ = nullptr）。
+    /// 用于"先声明、后赋值"的场景（如作为类成员）。
+    DbGuard() = default;
+
     /// @brief 打开或创建数据库，接管 sqlite3* 句柄。
     // 失败时抛 std::runtime_error。
     // 失败时必须 close 的原因（官方文档指导）：
@@ -75,6 +79,10 @@ private:
 ///   - 允许移动（所有权转移，源对象被置 nullptr，析构无操作）
 class StmtGuard {
 public:
+    /// @brief 默认构造：空守卫（pstmt_ = nullptr）。
+    /// 用于"先声明、后赋值"的场景（如作为类成员）。
+    StmtGuard() = default;
+
     /// @brief 预编译 SQL，接管 sqlite3_stmt* 句柄。
     // 失败时抛 std::runtime_error。
     // 失败时不需要 finalize 的原因（官方文档指导）：
