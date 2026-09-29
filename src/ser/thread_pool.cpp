@@ -36,16 +36,17 @@ ThreadPool::~ThreadPool() {
 }
 
 /// 提交任务：入队 + 唤醒一个工作线程；已停止则丢弃。
-void ThreadPool::addTask(Task task) {
+bool ThreadPool::addTask(Task task) {
     {
         std::lock_guard<std::mutex> lock(mtx_);
         // stop_ 与 tasks_ 同受 mtx_ 保护；锁外读 stop_ 是数据竞争。
-        if (stop_) return;
+        if (stop_) return false;
         tasks_.push(std::move(task));
     }
     // notify 放锁外：避免"被唤醒的线程立刻被调度、却因锁仍被本线程占着
     // 而多阻塞一轮"。放锁外，醒来时锁已空，可立即拿锁取任务。
     cv_.notify_one();
+    return true;
 }
 
 /// 请求停止：置 stop_、唤醒全部线程；幂等。

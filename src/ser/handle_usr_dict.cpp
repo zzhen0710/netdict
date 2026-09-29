@@ -26,7 +26,7 @@ void Server::handleUsrDict(int cfd, const proto::Msg& msg,
 /// 需登录；查完记一条历史。
 void Server::doQuery(int cfd, const proto::Msg& msg) {
     // 会话检查（未登录不能查）
-    auto name = sessionGet(cfd);
+    auto name = usrGet(cfd);
     if (!name) {
         sendLine(cfd, proto::makeErr("err", "not logged in"));
         return;
@@ -44,7 +44,7 @@ void Server::doQuery(int cfd, const proto::Msg& msg) {
     std::vector<Meaning> out;
     auto st = dict_.query(word, out);
 
-    if (st != stat::Query::Ok) {
+    if (st != status::Query::Ok) {
         sendLine(cfd, proto::makeErr(proto::Stat2Str(st)));
         return;
     }
@@ -64,7 +64,7 @@ void Server::doQuery(int cfd, const proto::Msg& msg) {
 /// 多行响应：ok <n> + n 行 "word\tmean\ttime"。
 void Server::doHistory(int cfd, const proto::Msg& msg) {
     // 会话检查
-    auto name = sessionGet(cfd);
+    auto name = usrGet(cfd);
     if (!name) {
         sendLine(cfd, proto::makeErr("err", "not logged in"));
         return;
@@ -100,7 +100,7 @@ void Server::doHistory(int cfd, const proto::Msg& msg) {
 /// .star <word> —— 收藏单词；回 "ok" / "starred"（已收藏）。
 void Server::doStar(int cfd, const proto::Msg& msg) {
     // 会话检查
-    auto name = sessionGet(cfd);
+    auto name = usrGet(cfd);
     if (!name) {
         sendLine(cfd, proto::makeErr("err", "not logged in"));
         return;
@@ -115,7 +115,7 @@ void Server::doStar(int cfd, const proto::Msg& msg) {
     // 先查 dict 拿 mean
     std::vector<Meaning> ms;
     auto qs = dict_.query(msg.args[0], ms);
-    if (qs != stat::Query::Ok) {
+    if (qs != status::Query::Ok) {
         sendLine(cfd, proto::makeErr(proto::Stat2Str(qs)));
         return;
     }
@@ -126,7 +126,7 @@ void Server::doStar(int cfd, const proto::Msg& msg) {
 
     // 收藏
     auto st = usr_.star(*name, e);
-    if (st == stat::Query::Ok) {
+    if (st == status::Query::Ok) {
         sendLine(cfd, proto::makeOk());
     } else {
         sendLine(cfd, proto::makeErr(proto::Stat2Str(st)));
@@ -136,7 +136,7 @@ void Server::doStar(int cfd, const proto::Msg& msg) {
 /// .unstar <word> —— 取消收藏；回 "ok" / "unstarred"（本来就没收藏）。
 void Server::doUnstar(int cfd, const proto::Msg& msg) {
     // 会话检查
-    auto name = sessionGet(cfd);
+    auto name = usrGet(cfd);
     if (!name) {
         sendLine(cfd, proto::makeErr("err", "not logged in"));
         return;
@@ -150,7 +150,7 @@ void Server::doUnstar(int cfd, const proto::Msg& msg) {
 
     // 取消收藏
     auto st = usr_.unstar(*name, msg.args[0]);
-    if (st == stat::Query::Ok) {
+    if (st == status::Query::Ok) {
         sendLine(cfd, proto::makeOk());
     } else {
         sendLine(cfd, proto::makeErr(proto::Stat2Str(st)));
@@ -160,7 +160,7 @@ void Server::doUnstar(int cfd, const proto::Msg& msg) {
 /// .pad —— 显示收藏（字母序）；多行：ok <n> + n 行 "word"。
 void Server::doPad(int cfd, const proto::Msg& msg) {
     // 会话检查
-    auto name = sessionGet(cfd);
+    auto name = usrGet(cfd);
     if (!name) {
         sendLine(cfd, proto::makeErr("err", "not logged in"));
         return;
@@ -182,7 +182,7 @@ void Server::doPad(int cfd, const proto::Msg& msg) {
     // 取收藏
     std::vector<StarEntry> out;
     auto st = usr_.getStars(*name, static_cast<size_t>(num), out);
-    if (st != stat::Query::Ok) {
+    if (st != status::Query::Ok) {
         sendLine(cfd, proto::makeErr(proto::Stat2Str(st)));
         return;
     }

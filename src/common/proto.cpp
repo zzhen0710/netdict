@@ -61,36 +61,36 @@ namespace proto {
     // ---------- stat 枚举 → 响应字符串 ----------
 
     /// 用户操作状态 → 响应首词（如 Ok → "ok"）。
-    std::string_view Stat2Str(stat::UsrOp s) noexcept {
+    std::string_view Stat2Str(status::UsrOp s) noexcept {
         switch (s) {
-            case stat::UsrOp::Ok:        return "ok";
-            case stat::UsrOp::NotFound:  return "not_found";
-            case stat::UsrOp::Exists:    return "exists";
-            case stat::UsrOp::WrongPwd:  return "wrong_pwd";
-            case stat::UsrOp::Err:       return "err";      // 消 Warnning
+            case status::UsrOp::Ok:        return "ok";
+            case status::UsrOp::NotFound:  return "not_found";
+            case status::UsrOp::Exists:    return "exists";
+            case status::UsrOp::WrongPwd:  return "wrong_pwd";
+            case status::UsrOp::Err:       return "err";      // 消 Warnning
         }
         return "err";
     }
 
     /// 查询状态 → 响应首词。
-    std::string_view Stat2Str(stat::Query s) noexcept {
+    std::string_view Stat2Str(status::Query s) noexcept {
         switch (s) {
-            case stat::Query::Ok:        return "ok";
-            case stat::Query::NotFound:  return "not_found";
-            case stat::Query::Starred:   return "starred";
-            case stat::Query::Unstarred: return "unstarred";
-            case stat::Query::Err:       return "err";
+            case status::Query::Ok:        return "ok";
+            case status::Query::NotFound:  return "not_found";
+            case status::Query::Starred:   return "starred";
+            case status::Query::Unstarred: return "unstarred";
+            case status::Query::Err:       return "err";
         }
         return "err";
     }
 
     /// 管理端命令状态 → 响应首词。
-    std::string_view Stat2Str(stat::Admin s) noexcept {
+    std::string_view Stat2Str(status::Admin s) noexcept {
         switch (s) {
-            case stat::Admin::Ok:        return "ok";
-            case stat::Admin::BadArgs:   return "bad_args";
-            case stat::Admin::NotFound:  return "not_found";
-            case stat::Admin::Err:       return "not_found";
+            case status::Admin::Ok:        return "ok";
+            case status::Admin::BadArgs:   return "bad_args";
+            case status::Admin::NotFound:  return "not_found";
+            case status::Admin::Err:       return "not_found";
         }
         return "err";
     }

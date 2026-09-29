@@ -45,7 +45,7 @@ int main() {
         std::vector<Meaning> out;
         auto s = repo.query("apple", out);
 
-        assert(s == stat::Query::Ok);
+        assert(s == status::Query::Ok);
         assert(out.size() == 1);
         assert(out[0].text == "n.苹果");
         assert(out[0].rowid > 0);          // rowid 是正整数
@@ -56,7 +56,7 @@ int main() {
         std::vector<Meaning> out;
         auto s = repo.query("cat", out);
 
-        assert(s == stat::Query::Ok);
+        assert(s == status::Query::Ok);
         assert(out.size() == 1);
         assert(out[0].text == "n.猫");     // 无前导/尾随空格
     }
@@ -66,7 +66,7 @@ int main() {
         std::vector<Meaning> out;
         auto s = repo.query("notexist", out);
 
-        assert(s == stat::Query::NotFound);
+        assert(s == status::Query::NotFound);
         assert(out.empty());
     }
 
@@ -84,7 +84,7 @@ int main() {
     {
         std::vector<Meaning> out;
         auto s = repo2.query("apple", out);
-        assert(s == stat::Query::Ok);
+        assert(s == status::Query::Ok);
         assert(out.size() == 2);           // apple 有两条释义
         // rowid 各不相同
         assert(out[0].rowid != out[1].rowid);

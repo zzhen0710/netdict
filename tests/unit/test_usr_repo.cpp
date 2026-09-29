@@ -14,24 +14,24 @@ int main() {
     // ==================== 1. reg ====================
     {
         // 首次注册成功
-        assert(repo.reg("alice", "123") == stat::UsrOp::Ok);
+        assert(repo.reg("alice", "123") == status::UsrOp::Ok);
         // 重复注册 → Exists
-        assert(repo.reg("alice", "456") == stat::UsrOp::Exists);
+        assert(repo.reg("alice", "456") == status::UsrOp::Exists);
         // 另一个用户
-        assert(repo.reg("bob", "abc") == stat::UsrOp::Ok);
+        assert(repo.reg("bob", "abc") == status::UsrOp::Ok);
     }
     std::cout << "[OK] reg\n";
 
     // ==================== 2. login ====================
     {
         // 用户不存在
-        assert(repo.login("nobody", "x") == stat::UsrOp::NotFound);
+        assert(repo.login("nobody", "x") == status::UsrOp::NotFound);
         // 密码错
-        assert(repo.login("alice", "wrong") == stat::UsrOp::WrongPwd);
+        assert(repo.login("alice", "wrong") == status::UsrOp::WrongPwd);
         // 正确登录
-        assert(repo.login("alice", "123") == stat::UsrOp::Ok);
+        assert(repo.login("alice", "123") == status::UsrOp::Ok);
         // 重复登录仍 Ok（多设备；在线由 Server 的 sessions_ 管）
-        assert(repo.login("alice", "123") == stat::UsrOp::Ok);
+        assert(repo.login("alice", "123") == status::UsrOp::Ok);
     }
     std::cout << "[OK] login\n";
 
@@ -70,41 +70,41 @@ int main() {
     {
         // 首次收藏
         assert(repo.star("alice", {"apple", "n.苹果", "2026-01-01 10:00:00"})
-                   == stat::Query::Ok);
+                   == status::Query::Ok);
         // 重复收藏 → Starred
         assert(repo.star("alice", {"apple", "n.苹果", "2026-01-01 10:00:00"})
-                   == stat::Query::Starred);
+                   == status::Query::Starred);
         // 再收藏两个
         assert(repo.star("alice", {"cat", "n.猫", "2026-01-01 10:01:00"})
-                   == stat::Query::Ok);
+                   == status::Query::Ok);
         assert(repo.star("alice", {"book", "n.书", "2026-01-01 10:02:00"})
-                   == stat::Query::Ok);
+                   == status::Query::Ok);
 
         // 字母序：apple / book / cat
         std::vector<StarEntry> stars;
-        assert(repo.getStars("alice", 10, stars) == stat::Query::Ok);
+        assert(repo.getStars("alice", 10, stars) == status::Query::Ok);
         assert(stars.size() == 3);
         assert(stars[0].word == "apple" && stars[0].mean == "n.苹果");
         assert(stars[1].word == "book"  && stars[1].mean == "n.书");
         assert(stars[2].word == "cat"   && stars[2].mean == "n.猫");
 
         // limit 生效：取前 2
-        assert(repo.getStars("alice", 2, stars) == stat::Query::Ok);
+        assert(repo.getStars("alice", 2, stars) == status::Query::Ok);
         assert(stars.size() == 2);
         assert(stars[0].word == "apple");
         assert(stars[1].word == "book");
 
         // 取消收藏
-        assert(repo.unstar("alice", "apple") == stat::Query::Ok);
+        assert(repo.unstar("alice", "apple") == status::Query::Ok);
         // 再取消 → 本来就没收藏
-        assert(repo.unstar("alice", "apple") == stat::Query::Unstarred);
+        assert(repo.unstar("alice", "apple") == status::Query::Unstarred);
 
         // 剩 2 条
-        assert(repo.getStars("alice", 10, stars) == stat::Query::Ok);
+        assert(repo.getStars("alice", 10, stars) == status::Query::Ok);
         assert(stars.size() == 2);
 
         // bob 无收藏
-        assert(repo.getStars("bob", 10, stars) == stat::Query::Ok);
+        assert(repo.getStars("bob", 10, stars) == status::Query::Ok);
         assert(stars.empty());
     }
     std::cout << "[OK] star/unstar/getStars\n";

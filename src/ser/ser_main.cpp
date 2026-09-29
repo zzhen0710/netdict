@@ -15,18 +15,17 @@
 
 #include <csignal>      // std::signal
 #include <exception>    // std::exception 基类
-#include <unistd.h>     // write
 
-// 全局指针，供信号处理函数调 stop（signal handler 不能捕获复杂状态）
+// 全局指针，供信号处理函数调 requestStop()（signal handler 不能捕获复杂状态）
 static Server* g_server = nullptr;
 
-/// 信号处理：请求 Server 停止，并补一个换行（让 ^C 后另起一行）。
-//  为什么只用 g_server->stop() 和 write：
+/// 信号处理：只调 requestStop()（只置标志）+ write（async-signal-safe），并补一个换行（让 ^C 后另起一行）。
+//  为什么只用 g_server->requestStop() 和 write：
 //   - signal handler 里"只能调'异步信号安全'函数"（如 write）；
 //   - printf / fprintf / std::cout 不是（内部有锁 / 缓冲），可能死锁；
 //   - write 是 POSIX 明确列出的异步信号安全函数。
 static void onSignal(int) {
-    if (g_server) g_server->stop();
+    if (g_server) g_server->requestStop();
     const char nl = '\n';
     write(STDERR_FILENO, &nl, 1);
 }
@@ -52,7 +51,7 @@ int main(int argc, char* argv[]) {
         std::signal(SIGINT,  onSignal);
         std::signal(SIGTERM, onSignal);
 
-        // 5. 进入 accept 主循环（阻塞直到 stop）
+        // 5. 进入 epoll 主循环（阻塞直到 requestStop）
         server.run();
     } catch (const std::exception& e) {
         LOG_ERR("fatal: %s", e.what());

@@ -40,7 +40,7 @@ UsrRepo::UsrRepo(const std::string& db_path)
 
 /// 注册新用户。
 /// @return Ok（成功）/ Exists（用户名已存在）/ Err。
-stat::UsrOp UsrRepo::reg(const std::string& name, const std::string& pwd) {
+status::UsrOp UsrRepo::reg(const std::string& name, const std::string& pwd) {
     StmtGuard stmt(db_.get(),
         "insert into usr (name, pwd) values (?, ?)");
 
@@ -48,29 +48,29 @@ stat::UsrOp UsrRepo::reg(const std::string& name, const std::string& pwd) {
     sqlite3_bind_text(stmt.get(), 2, pwd.c_str(),  -1, SQLITE_STATIC);
 
     int rc = sqlite3_step(stmt.get());
-    if (rc == SQLITE_DONE)       return stat::UsrOp::Ok;
-    if (rc == SQLITE_CONSTRAINT) return stat::UsrOp::Exists;
+    if (rc == SQLITE_DONE)       return status::UsrOp::Ok;
+    if (rc == SQLITE_CONSTRAINT) return status::UsrOp::Exists;
 
-    return stat::UsrOp::Err;
+    return status::UsrOp::Err;
 }
 
 /// 登录。
 /// @return Ok / NotFound（用户不存在）/ WrongPwd / Err。
-stat::UsrOp UsrRepo::login(const std::string& name, const std::string& pwd) {
+status::UsrOp UsrRepo::login(const std::string& name, const std::string& pwd) {
     StmtGuard stmt(db_.get(), "select pwd from usr where name = ?");
     sqlite3_bind_text(stmt.get(), 1, name.c_str(), -1, SQLITE_STATIC);
 
     // 查用户
     int rc = sqlite3_step(stmt.get());
-    if (rc == SQLITE_DONE) return stat::UsrOp::NotFound;
-    if (rc != SQLITE_ROW)  return stat::UsrOp::Err;
+    if (rc == SQLITE_DONE) return status::UsrOp::NotFound;
+    if (rc != SQLITE_ROW)  return status::UsrOp::Err;
 
     // 密码校验
     const auto* db_pwd = sqlite3_column_text(stmt.get(), 0);
     if (!db_pwd || pwd != reinterpret_cast<const char*>(db_pwd))
-        return stat::UsrOp::WrongPwd;
+        return status::UsrOp::WrongPwd;
 
-    return stat::UsrOp::Ok;
+    return status::UsrOp::Ok;
 }
 
 /// 追加一条历史记录。
@@ -119,7 +119,7 @@ bool UsrRepo::getHistory(const std::string& name, size_t limit,
 
 /// 收藏。
 /// @return Ok / Starred（已收藏）/ Err。
-stat::Query UsrRepo::star(const std::string& name, const StarEntry& entry) {
+status::Query UsrRepo::star(const std::string& name, const StarEntry& entry) {
     StmtGuard stmt(db_.get(),
         "insert into star (name, word, mean, time) values (?, ?, ?, ?)");
 
@@ -130,29 +130,29 @@ stat::Query UsrRepo::star(const std::string& name, const StarEntry& entry) {
 
     // 组合主键冲突 = 已收藏
     int rc = sqlite3_step(stmt.get());
-    if (rc == SQLITE_DONE)       return stat::Query::Ok;
-    if (rc == SQLITE_CONSTRAINT) return stat::Query::Starred;
+    if (rc == SQLITE_DONE)       return status::Query::Ok;
+    if (rc == SQLITE_CONSTRAINT) return status::Query::Starred;
 
-    return stat::Query::Err;
+    return status::Query::Err;
 }
 
 /// 取消收藏。
 /// @return Ok / Unstarred（本来就没收藏）/ Err。
-stat::Query UsrRepo::unstar(const std::string& name, const std::string& word) {
+status::Query UsrRepo::unstar(const std::string& name, const std::string& word) {
     StmtGuard stmt(db_.get(), "delete from star where name = ? and word = ?");
     sqlite3_bind_text(stmt.get(), 1, name.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt.get(), 2, word.c_str(), -1, SQLITE_TRANSIENT);
 
-    if (sqlite3_step(stmt.get()) != SQLITE_DONE) return stat::Query::Err;
+    if (sqlite3_step(stmt.get()) != SQLITE_DONE) return status::Query::Err;
 
     // 影响行数为 0 = 本来就没收藏
     return sqlite3_changes(db_.get()) == 0
-        ? stat::Query::Unstarred : stat::Query::Ok;
+        ? status::Query::Unstarred : status::Query::Ok;
 }
 
 /// 取用户收藏（按 word 字母序，最多 limit 条）。
 /// @return Ok / Err。
-stat::Query UsrRepo::getStars(const std::string& name, size_t limit,
+status::Query UsrRepo::getStars(const std::string& name, size_t limit,
                               std::vector<StarEntry>& out) {
     out.clear();
 
@@ -176,5 +176,5 @@ stat::Query UsrRepo::getStars(const std::string& name, size_t limit,
         });
     }
 
-    return rc == SQLITE_DONE ? stat::Query::Ok : stat::Query::Err;
+    return rc == SQLITE_DONE ? status::Query::Ok : status::Query::Err;
 }

@@ -1,5 +1,5 @@
 /// @file common/types.hpp
-/// @brief 跨模块通用类型：状态枚举集合（stat::*）与字典词条（Meaning）。
+/// @brief 跨模块通用类型：状态枚举集合（status::*）与字典词条（Meaning）。
 /// 只依赖标准库；被 proto / db / ser / cli 等模块 include。
 
 #pragma once
@@ -7,7 +7,7 @@
 #include <cstdint>   // uint8_t
 #include <string>    // std::string
 
-namespace stat {
+namespace status {
 
     /// 用户操作（注册 / 登录 / 登出）
     enum class UsrOp : uint8_t {
@@ -35,7 +35,7 @@ namespace stat {
         Err,            ///< 其他错误
     };
 
-}   // namespace stat
+}   // namespace status
 
 /// 一条字典释义
 struct Meaning {

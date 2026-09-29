@@ -30,10 +30,10 @@ public:
     // ---------- 用户 ----------
 
     /// 注册；用户名已存在返回 Exists
-    stat::UsrOp reg(const std::string& name, const std::string& pwd);
+    status::UsrOp reg(const std::string& name, const std::string& pwd);
 
     /// 登录；用户不存在返回 NotFound，密码错返回 WrongPwd
-    stat::UsrOp login(const std::string& name, const std::string& pwd);
+    status::UsrOp login(const std::string& name, const std::string& pwd);
 
     // ---------- 历史 ----------
 
@@ -47,13 +47,13 @@ public:
     // ---------- 收藏 ----------
 
     /// 收藏；已收藏返回 Exists
-    stat::Query star(const std::string& name, const StarEntry& entry);
+    status::Query star(const std::string& name, const StarEntry& entry);
 
     /// 取消收藏；未收藏返回 NotFound
-    stat::Query unstar(const std::string& name, const std::string& word);
+    status::Query unstar(const std::string& name, const std::string& word);
 
     /// 查该用户收藏的词（字母序），最多 limit 条，查得 word + mean；返回 Ok / Err
-    stat::Query getStars(const std::string& name, size_t limit, 
+    status::Query getStars(const std::string& name, size_t limit, 
                          std::vector<StarEntry>& out);
 
 private:

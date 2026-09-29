@@ -4,7 +4,8 @@
 #pragma once
 
 #include "common/net.hpp"   // net::DEFAULT_IP / DEFAULT_PORT
-#include <string>
+
+#include <atomic>
 #include <string_view>
 
 /// 命令行客户端：阻塞"一问一答"。
@@ -46,7 +47,7 @@ private:
     /// 打印一行（stdout）。
     void printLine(std::string_view s);
 
-    std::string recv_buf_;      ///< 接收缓冲（攒到 \n）
-    int sock_fd_;               ///< 连接套接字
-    bool running_{false};       ///< 运行标志（单线程；信号 handler 同线程改）
+    std::string       recv_buf_;        ///< 接收缓冲（攒到 \n）
+    int               sock_fd_;         ///< 连接套接字
+    std::atomic<bool> running_{false};  ///< 运行标志（信号 handler 与 run 竞争置 false）
 };

@@ -99,7 +99,7 @@ void Cli::run() {
 
     std::string line;
     // 读一行 → 空行跳过 → 发送 → 收响应；EOF 退出
-    while (running_ && readUsrLine(line)) {
+    while (running_.load() && readUsrLine(line)) {
         LOG_DEBUG("cmd: %.*s", static_cast<int>(line.size()), line.data());
 
         if (line.empty()) continue;
@@ -124,7 +124,7 @@ void Cli::run() {
 
 /// 请求停止：置 running_ = false（信号处理调）。
 void Cli::stop() {
-    running_ = false;
+    running_.store(false);
 }
 
 /// 读一行用户输入；EOF / Ctrl+C 返回 false。

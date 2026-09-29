@@ -33,14 +33,14 @@ void Server::doReg(int cfd, const proto::Msg& msg) {
     }
 
     // 已登录：拦
-    if (sessionGet(cfd).has_value()) {      
+    if (usrGet(cfd).has_value()) {      
         sendLine(cfd, proto::makeErr("err", "already logged in"));
         return;
     }
 
     auto st = usr_.reg(msg.args[0], msg.args[1]);
-    if (st == stat::UsrOp::Ok) {
-        sessionSet(cfd, msg.args[0]);     // 注册即登录 → 接入会话
+    if (st == status::UsrOp::Ok) {
+        usrSet(cfd, msg.args[0]);     // 注册即登录 → 接入会话
         sendLine(cfd, proto::makeOk("welcome, " + msg.args[0]));
     } else {
         sendLine(cfd, proto::makeErr(proto::Stat2Str(st)));
@@ -57,14 +57,14 @@ void Server::doLogin(int cfd, const proto::Msg& msg) {
     }
 
     // 已登录：拦
-    if (sessionGet(cfd).has_value()) {
+    if (usrGet(cfd).has_value()) {
         sendLine(cfd, proto::makeErr("err", "already logged in"));
         return;
     }
 
     auto st = usr_.login(msg.args[0], msg.args[1]);
-    if (st == stat::UsrOp::Ok) {
-        sessionSet(cfd, msg.args[0]);     // 登录 → 接入会话
+    if (st == status::UsrOp::Ok) {
+        usrSet(cfd, msg.args[0]);     // 登录 → 接入会话
         sendLine(cfd, proto::makeOk("welcome, " + msg.args[0]));
     } else {
         sendLine(cfd, proto::makeErr(proto::Stat2Str(st)));
@@ -75,11 +75,11 @@ void Server::doLogin(int cfd, const proto::Msg& msg) {
 void Server::doLogout(int cfd, const proto::Msg& msg) {
     (void)msg;
 
-    if (!sessionGet(cfd).has_value()) {
+    if (!usrGet(cfd).has_value()) {
         sendLine(cfd, proto::makeErr("err", "not logged in"));
         return;
     }
-    sessionErase(cfd);
+    usrClear(cfd);
 
     sendLine(cfd, proto::makeOk());
 }

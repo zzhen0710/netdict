@@ -83,9 +83,9 @@ namespace proto {
     [[nodiscard]] std::string_view Cmd2Str(SysCmd::Ctrl c) noexcept;
 
     /// stat 枚举 → 响应首词（如 Ok → "ok"）
-    [[nodiscard]] std::string_view Stat2Str(stat::UsrOp s) noexcept;
-    [[nodiscard]] std::string_view Stat2Str(stat::Query s) noexcept;
-    [[nodiscard]] std::string_view Stat2Str(stat::Admin s) noexcept;
+    [[nodiscard]] std::string_view Stat2Str(status::UsrOp s) noexcept;
+    [[nodiscard]] std::string_view Stat2Str(status::Query s) noexcept;
+    [[nodiscard]] std::string_view Stat2Str(status::Admin s) noexcept;
 
     /// 请求编解码：encode/decode 均不含 \n
     [[nodiscard]] std::string encode(const Msg& msg);

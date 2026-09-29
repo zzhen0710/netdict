@@ -31,8 +31,8 @@ public:
     ThreadPool(const ThreadPool&) = delete;
     ThreadPool& operator=(const ThreadPool&) = delete;
 
-    /// 提交任务；已停止则丢弃。
-    void addTask(Task task);
+    /// 提交任务；已停止则丢弃并返回 false（返回值可忽略）。
+    bool addTask(Task task);
 
     /// 请求停止：置 stop_ 并唤醒全部线程；此后 addTask 一律丢弃。
     /// 幂等；不阻塞（线程退出与 join 由析构完成）。

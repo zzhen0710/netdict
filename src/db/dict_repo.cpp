@@ -75,12 +75,13 @@ bool DictRepo::initFromFile(const std::string& txt_path) {
         sqlite3_exec(db_.get(), "ROLLBACK", nullptr, nullptr, nullptr);
         return false;
     }
+
     return true;
 }
 
 /// 精确查询：按 word 查所有释义（含 rowid）。
 /// @return Ok（至少一条）/ NotFound（无结果）/ Err（读取异常）。
-stat::Query DictRepo::query(const std::string& word, std::vector<Meaning>& out) {
+status::Query DictRepo::query(const std::string& word, std::vector<Meaning>& out) {
     out.clear();
 
     // SQLITE_STATIC：word 是函数参数，活到函数结束，无需复制
@@ -98,8 +99,9 @@ stat::Query DictRepo::query(const std::string& word, std::vector<Meaning>& out) 
         m.text = txt ? reinterpret_cast<const char*>(txt) : ""; // 判空防 UB
     }
 
-    if (rc != SQLITE_DONE) return stat::Query::Err;
-    return out.empty() ? stat::Query::NotFound : stat::Query::Ok;
+    if (rc != SQLITE_DONE) return status::Query::Err;
+    
+    return out.empty() ? status::Query::NotFound : status::Query::Ok;
 }
 
 /// 词条总数。
@@ -109,5 +111,6 @@ long long DictRepo::count() {
     if (sqlite3_step(stmt.get()) == SQLITE_ROW) {
         return sqlite3_column_int64(stmt.get(), 0);
     }
+
     return 0;   // 理论上到不了
 }

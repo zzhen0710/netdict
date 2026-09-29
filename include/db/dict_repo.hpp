@@ -25,8 +25,8 @@ public:
     /// 精确查询单词，返回该词的所有释义（含 rowid）。
     /// @param word  待查单词
     /// @param out   输出参数：全部释义（调用前会被清空）
-    /// @return stat::Query::Ok（至少一条）或 stat::Query::NotFound
-    stat::Query query(const std::string& word, std::vector<Meaning>& out);
+    /// @return status::Query::Ok（至少一条）或 status::Query::NotFound
+    status::Query query(const std::string& word, std::vector<Meaning>& out);
 
     /// 词条总数。
     long long count();
