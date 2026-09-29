@@ -24,7 +24,13 @@ declare -A TESTS=(
     [test_logger]="tests/unit/test_logger.cpp src/common/logger.cpp"
     [test_utils]="tests/unit/test_utils.cpp src/common/utils.cpp"
     [test_net]="tests/unit/test_net.cpp src/common/net.cpp"
+    [test_line_editor]="tests/unit/test_line_editor.cpp src/common/line_editor.cpp /tmp/linenoise.o"
 )
+
+# 预编译第三方 C 源：g++ 会把 .c 当 C++ 编，需 gcc 单独编；
+if [ ! -f /tmp/linenoise.o ] || [ third_party/linenoise.c -nt /tmp/linenoise.o ]; then
+    gcc -c third_party/linenoise.c -Ithird_party -o /tmp/linenoise.o
+fi
 
 # 编译并运行单个测试
 run_one() {
@@ -32,9 +38,10 @@ run_one() {
     local srcs=(${TESTS[$name]})        # 按空格拆成源文件数组
 
     echo "=== building $name ==="
-    # 编译：头文件、源文件、链接库、输出
+    # 编译：头文件、第三方库、源文件、链接库、输出
     g++ -std=c++17 -Wall -Wextra \
         -Iinclude \
+        -Ithird_party \
         "${srcs[@]}" \
         -lsqlite3 -pthread \
         -o "/tmp/$name"
