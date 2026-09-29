@@ -15,7 +15,9 @@ int main() {
 
         std::atomic<int> counter{0};        // 原子读值
         for (int i = 0; i < 100; ++i) {
-            pool.addTask([&counter] { ++counter; });
+            // 成功入队返回 true（未停止时）
+            bool ok = pool.addTask([&counter] { ++counter; });
+            assert(ok);
         }
 
         // 设 2 秒截止时间，避免任务没跑完时测试无限等待
@@ -97,10 +99,12 @@ int main() {
         }
         assert(counter.load() == 1);
 
-        // 请求停止；之后提交的任务应被丢弃
+        // 请求停止；之后提交的任务应被丢弃（addTask 返回 false）
         pool.stop();
-        pool.addTask([&counter] { ++counter; });
-        pool.addTask([&counter] { ++counter; });
+        bool r1 = pool.addTask([&counter] { ++counter; });
+        bool r2 = pool.addTask([&counter] { ++counter; });
+        assert(r1 == false);           // 已停止：入队失败
+        assert(r2 == false);           // 同上
 
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
         assert(counter.load() == 1);   // 仍是 1
