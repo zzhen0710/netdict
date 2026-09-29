@@ -54,14 +54,16 @@ add_executable(netdict_server
     src/common/utils.cpp        # 通用工具
     src/common/logger.cpp       # 日志
     src/common/net.cpp          # 网络通用工具
+    src/common/line_editor.cpp  # 行编辑工具
     src/ser/handle_usr_dict.cpp # 处理用户字典请求
     src/ser/handle_usr_ctrl.cpp # 处理用户控制请求
 )
 
-# 服务器链接：SQLite3 + 线程库
+# 服务器链接：SQLite3 + 线程库 + linenoise
 target_link_libraries(netdict_server PRIVATE
     SQLite::SQLite3
     Threads::Threads
+    linenoise
 )
 
 # ---------- 客户端可执行文件 ----------
@@ -73,6 +75,7 @@ add_executable(netdict_client
     src/common/utils.cpp        
     src/common/logger.cpp
     src/common/net.cpp
+    src/common/line_editor.cpp
 )
 
 target_link_libraries(netdict_client PRIVATE
