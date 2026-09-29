@@ -34,20 +34,38 @@ namespace net {
     }
 
     /// 收一行：缓冲无 '\n' 时 recv 新数据，攒到 '\n' 切出一行。
-    bool recvLine(int fd, std::string& recv_buf, std::string& line) {
+    RecvLineResult recvLine(int fd, std::string& recv_buf, std::string& line) {
         while (true) {
             // 缓冲里已有 '\n'：切出一行，剩余留缓冲
             auto pos = recv_buf.find('\n');
             if (pos != std::string::npos) {
                 line = recv_buf.substr(0, pos);
                 recv_buf.erase(0, pos + 1);
-                return true;
+                return RecvLineResult::Ok;
             }
+
             // 否则 recv 一次多字节，追加到缓冲
             char buf[BUF_SIZE];
             ssize_t n = recv(fd, buf, sizeof(buf), 0);
-            if (n <= 0) return false;
-            recv_buf.append(buf, static_cast<std::size_t>(n));
+
+            if (n > 0) {
+                recv_buf.append(buf, static_cast<std::size_t>(n));  // 追加，继续找 '\n'
+                continue;
+            }
+            if (n == 0) {
+                return RecvLineResult::Closed;   // 对端关闭
+            }
+
+            // n < 0：出错
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                // 设了 SO_RCVTIMEO 时，超时 recv 返回 -1 + EAGAIN，故视为空闲超时
+                return RecvLineResult::Timeout;  
+            }
+            if (errno == EINTR) {
+                continue;                        // 信号打断，重试
+            }
+
+            return RecvLineResult::Error;        // 其他错误
         }
     }
 

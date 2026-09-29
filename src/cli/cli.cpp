@@ -5,53 +5,36 @@
 #include "common/logger.hpp"
 #include "common/proto.hpp"
 
-/* linenoise.h — 轻量命令行编辑库
- *
- * 来源：https://github.com/antirez/linenoise
- * 许可：BSD-2-Clause（见源码头注释）
- * 用途：为本项目 cli 提供行编辑 + 历史（上下键翻）
- *
- * 本项目只用到的接口：
- *   linenoise(prompt)       读一行；返回 malloc 串（或 nullptr）
- *   linenoiseFree(p)        释放 linenoise 返回的串
- *   linenoiseHistoryAdd(s)  把一行加入内存历史（供 ↑/↓）
- *
- * 改动：无（原文件）
- */
-#include "linenoise.h"
-
 #include <arpa/inet.h>      // inet_addr
 #include <netinet/in.h>     // sockaddr_in
+#include <poll.h>           // poll, pollfd, POLLIN
 #include <sys/socket.h>     // socket, connect, recv
 #include <unistd.h>         // close, write
 
-#include <cstring>          // memset
+#include <cerrno>           // errno, EINTR
 #include <iostream>
 #include <stdexcept>        // std::runtime_error
 
 // ------- 文件内常量 -------
+
 namespace {
 
-    /// linenoise 历史内存上限：超出的最旧记录被淘汰（环形）。
-    /// 退出 Save 全量覆盖写文件，文件行数 ≤ 此值。
-    constexpr int kHistoryMaxLen = 100;
+    /// 内存历史上限：超出的最旧记录被淘汰（环形）。
+    /// cli 专用；ser 用别的（管理员命令历史可能更少）。
+    constexpr int kCliHistoryMaxLen = 100;
 
-    /// 历史文件：家目录下（用户级数据，不随 cwd / 项目走）。
-    constexpr const char* kHistoryFile = "/.netdict_history";
-
-    /// 返回 linenoise 历史文件路径：~/.netdict_history。
-    /// 历史是用户级数据，放家目录（不随 cwd / 项目）；无 HOME 兜底当前目录。
-    std::string historyPath() {
-        const char* home = std::getenv("HOME");
-        return home ? std::string(home) + kHistoryFile
-                    : std::string(".") + kHistoryFile;
-    }
+    /// 历史文件名（拼到家目录）。
+    /// cli 专用（~/.netdict_history）；ser 用别的。
+    constexpr const char* kCliHistoryFile = "/.netdict_history";
 
 }   // namespace
 
+// ---------------- 构造 / 析构 ----------------
+
 /// 构造：创建 socket 并连接服务器。
 Cli::Cli(std::string_view ip, int port)
-    : sock_fd_(-1) {
+    : sock_fd_(-1),
+      editor_history_(kCliHistoryMaxLen, kCliHistoryFile) {
 
     // 1. 建 socket
     sock_fd_ = socket(AF_INET, SOCK_STREAM, 0);
@@ -74,52 +57,118 @@ Cli::Cli(std::string_view ip, int port)
     LOG_DEBUG("connected to %.*s:%d",
          static_cast<int>(ip.size()), ip.data(), port);
 
-    // 历史：内存最多 kHistoryMaxLen 条（超出的最旧淘汰）；
-    // 退出时 Save 全量覆盖写文件（非追加），文件行数 ≤ kHistoryMaxLen。
-    linenoiseHistorySetMaxLen(kHistoryMaxLen);
-    linenoiseHistoryLoad(historyPath().c_str());
+    // 历史由 editor_history_ 成员在初始化列表里构造（Load）；
+    // 析构时自动 Save（全量覆盖）。文件路径：$HOME + kCliHistoryFile。
 }
 
-/// 析构：保存历史；关闭 socket。
+/// 析构：关闭 socket（历史由 editor_history_ 自动保存）。
 Cli::~Cli() {
-    // 退出前保存历史（全量覆盖）；下次启动 Load 可 ↑ 翻。
-    linenoiseHistorySave(historyPath().c_str());
-    
+    // editor_history_ 析构自动 Save，不用手动调
+
     if (sock_fd_ >= 0) {
         ::close(sock_fd_);
     }
 }
 
-/// 主循环：读 stdin → 发请求 → 收响应 → 显示。
-void Cli::run() {
-    running_ = true;
+// ---------------- 主循环 ----------------
 
+/// 主循环：poll 等 stdin / socket，分发处理。
+/// 每轮两个分支：socket 可读 → 探测断开；stdin 可读 → 喂编辑。
+/// 直到 EOF / 断开 / .quit / stop()（信号）。
+void Cli::run() {
+    running_.store(true);   // 置运行标志
+
+    // 欢迎信息
     printLine("welcome to netdict client");
     printLine("type .help for commands, Ctrl+D to quit");
 
-    std::string line;
-    // 读一行 → 空行跳过 → 发送 → 收响应；EOF 退出
-    while (running_.load() && readUsrLine(line)) {
-        LOG_DEBUG("cmd: %.*s", static_cast<int>(line.size()), line.data());
+    // poll 监听：stdin（用户输入）+ socket（服务器数据/断开）
+    pollfd fds[2];
+    fds[0].fd = STDIN_FILENO;  fds[0].events = POLLIN;
+    fds[1].fd = sock_fd_;      fds[1].events = POLLIN;
 
-        if (line.empty()) continue;
-        if (!sendRequest(line)) continue;
+    // 编辑会话：整个 run 期间一个，start/stop 手动切换。
+    // 构造 = EditStart（进 raw mode），析构兜底 Stop。
+    LineEditor editor(STDIN_FILENO, STDOUT_FILENO, "netdict> ");
 
-        bool ok = handleResp();
+    bool kicked = false;   // true = 被服务器终态通知踢下线（被动退出）
 
-        // .logout：ok 后打 goodbye；未登录服务器回 err，不打
-        if (ok && line == ".logout") {
-            printLine("goodbye");
-        }
-
-        // .quit / .exit：服务器必回 ok；显式判，避免服务器异常
-        if (ok && (line == ".quit" || line == ".exit")) {
-            printLine("goodbye");
+    // 主循环：等 stdin / socket 事件
+    while (running_.load()) {
+        int n = poll(fds, 2, -1);   // 阻塞等；-1 = 不限时
+        if (n < 0) {
+            if (errno == EINTR) continue;   // 信号打断，重试
+            editor.stop();                  // 退编辑，回正常模式，才能打印
+            LOG_ERR("poll failed");
             break;
         }
+
+        // 分支 1：socket 可读（数据 / 挂断 / 错误）
+        if (fds[1].revents & (POLLIN | POLLHUP | POLLERR)) {
+            char c;
+            ssize_t r = recv(sock_fd_, &c, 1, MSG_PEEK);   // 偷看 1 字节，不消费
+
+            // r == 0：对端关闭（FIN）。先退编辑（回正常模式），再打印。
+            if (r == 0) {
+                editor.stop();
+                printLine("[server disconnected]");
+                break;
+            }
+            // r > 0：有数据。此处是服务器主动推的通知（非"请求-响应"配对），
+            //   但格式与响应一致，统一交给 handleResp 处理（它管所有回复）。
+            //   handleResp 返回：
+            //     true  = ok 状态词 → 非终态通知 → 继续等用户输入
+            //     非 true = err / 其他 → 终态通知（如 idle timeout）→ 等键退出
+            if (r > 0) {
+                editor.stop();   // 退编辑，回正常模式，才能打印
+
+                if (handleResp()) {
+                    // 非终态：重新进编辑，继续等用户输入
+                    editor.start();
+                } else {
+                    // 终态：等用户按键看清提示，再标记被动退出
+                    kicked = true;
+                    printLine("press Enter to exit...");
+                    char ch;
+                    ::read(STDIN_FILENO, &ch, 1);
+                    break;
+                }
+            }
+            // r < 0：错误，理论不会（poll 说可读），忽略
+        }
+
+        // 分支 2：stdin 可读（用户敲键）
+        if (fds[0].revents & POLLIN) {
+            auto r = editor.feed();   // 喂一个键；可能返回 More / Eof / Line
+
+            if (r == LineEditor::FeedResult::More) {
+                continue;   // 还在编辑（没回车）
+            }
+            if (r == LineEditor::FeedResult::Eof) {
+                break;      // EOF（Ctrl+D）/ Ctrl+C
+            }
+
+            // Line：拿到整行。先退编辑（回正常模式），再处理、打印。
+            std::string line = editor.line();
+            editor.stop();
+
+            // 非空行入历史
+            if (!line.empty()) {
+                editor_history_.add(line.c_str());
+            }
+            if (!handleCmd(line)) break;   // false = .quit，退出
+
+            editor.start();   // 重新进编辑，准备下一行
+        }
+    }
+    // editor 析构：兜底 Stop（幂等）
+    
+    // 被动退出（被服务器踢）：补 goodbye
+    if (kicked) {
+        printLine("goodbye");
     }
 
-    LOG_DEBUG("client exit");
+    LOG_DEBUG("client exit");   // 唯一收尾
 }
 
 /// 请求停止：置 running_ = false（信号处理调）。
@@ -127,27 +176,37 @@ void Cli::stop() {
     running_.store(false);
 }
 
-/// 读一行用户输入；EOF / Ctrl+C 返回 false。
-/// 用 linenoise：支持行编辑、上下键翻历史。
-bool Cli::readUsrLine(std::string& line) {
-    // linenoise(prompt)：打印提示符，读一行；内部处理行编辑 / 上下键。
-    //   - 返回 malloc 出的 C 串，需 linenoiseFree 释放；
-    //   - EOF（Ctrl+D）或 Ctrl+C 中止时返回 nullptr。
-    char* raw = linenoise("netdict> ");
-    if (!raw) return false;
+// ---------------- 命令处理 ----------------
 
-    line = raw;                                 // C 串 → std::string（拷贝）
+/// 处理一行用户命令：空行跳过，发送，收响应，显示。
+/// @return 是否继续主循环（false = .quit，应退出）
+bool Cli::handleCmd(std::string_view line) {
+    LOG_DEBUG("cmd: %.*s", static_cast<int>(line.size()), line.data());
 
-    // 加入内存历史，之后可用 ↑ / ↓ 翻。空行不入。
-    if (!line.empty()) linenoiseHistoryAdd(raw);
+    // 空行跳过
+    if (line.empty()) return true;
 
-    linenoiseFree(raw);                         // 释放 linenoise 内部 malloc
+    // 未发送（格式错），继续
+    if (!sendReq(line)) return true;
+
+    bool ok = handleResp();
+
+    // .logout：ok 后打 goodbye；未登录服务器回 err，不打
+    if (ok && line == ".logout") {
+        printLine("goodbye");
+    }
+
+    // .quit / .exit：服务器必回 ok；显式判，避免服务器异常
+    if (ok && (line == ".quit" || line == ".exit")) {
+        printLine("goodbye");
+        return false;   // 告诉 run 退出
+    }
 
     return true;
 }
 
 /// 处理并发送用户输入：必须 "." 开头；否则打提示。
-bool Cli::sendRequest(std::string_view usr_req) {
+bool Cli::sendReq(std::string_view usr_req) {
     // 必须 "." 开头
     if (usr_req.empty() || usr_req.front() != '.') {
         printLine("commands must start with '.' (type .help)");
@@ -165,12 +224,12 @@ bool Cli::sendRequest(std::string_view usr_req) {
     std::string out(usr_req);
     out += '\n';
 
-    LOG_DEBUG("sent: %.*s", static_cast<int>(usr_req.size()), usr_req.data());
-
     if (net::sendAll(sock_fd_, out.data(), out.size()) < 0) {
-        LOG_ERR("send failed"); 
+        LOG_ERR("send failed");
         return false;
     }
+    
+    LOG_DEBUG("sent: %.*s", static_cast<int>(usr_req.size()), usr_req.data());
 
     return true;
 }
@@ -182,7 +241,7 @@ bool Cli::handleResp() {
     std::string line;
 
     // 收首行；对端关闭 / 出错 → 打提示 + 抛（让 run 退出）
-    if (!net::recvLine(sock_fd_, recv_buf_, line)) {
+    if (net::recvLine(sock_fd_, recv_buf_, line) != net::RecvLineResult::Ok) {
         printLine("[server disconnected]");
         throw std::runtime_error("server disconnected");
     }
@@ -220,7 +279,7 @@ bool Cli::handleResp() {
     int n = std::stoi(std::string(data));
     printLine(std::to_string(n) + " result(s):");
     for (int i = 0; i < n; ++i) {
-        if (!net::recvLine(sock_fd_, recv_buf_, line)) {
+        if (net::recvLine(sock_fd_, recv_buf_, line) != net::RecvLineResult::Ok) {
             printLine("[server disconnected]");
             throw std::runtime_error("server disconnected");
         }

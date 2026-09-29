@@ -21,8 +21,11 @@
 namespace {
     /// epoll_wait 每轮最多取回的就绪事件数
     constexpr int kMaxEvents = 1024;
-}
 
+    /// 连接空闲超时（秒）：工作线程阻塞 recv 时，到点被踢。
+    /// 测试阶段 5 秒；正式可改大（如 3600 = 1 小时）。
+    constexpr int kRecvTimeoutSec = 3600;
+}
 // ---- 构造 / 析构 ----
 
 /// 构造：创建 socket、bind、listen。
@@ -184,6 +187,12 @@ void Server::handleAccept() {
         LOG_INFO("client connected: %s:%d (fd = %d)",
                  inet_ntoa(cli.sin_addr), ntohs(cli.sin_port), cfd);
 
+        // 连接空闲超时：工作线程阻塞 recv 时，到点 recv 返回 EAGAIN → recvLine 返回 Timeout
+        struct timeval tv{};
+        tv.tv_sec  = kRecvTimeoutSec;
+        tv.tv_usec = 0;
+        setsockopt(cfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
         // 登记 + ADD 同一临界区（防"已登记但未 ADD"的窗口）
         {
             std::lock_guard lk(conns_mtx_);  // 锁：保护 conns_
@@ -245,8 +254,20 @@ void Server::handleClient(int cfd) {
     // 逐行收、解析、分发，直到对端关闭
     while (true) {
         // 收一行（net::recvLine：从 recv_buf 切；不足时再 recv）
-        if (!net::recvLine(cfd, recv_buf, line)) {
-            // 对端关闭：取用户名记日志，退出循环
+        auto r = net::recvLine(cfd, recv_buf, line);
+
+        // 空闲超时：客户端久不发数据，踢
+        if (r == net::RecvLineResult::Timeout) {
+            // 通知客户端：空闲超时，我要踢你了。
+            // 状态用 stat::UsrOp::Err（连接层错误），reason 说明原因。
+            sendLine(cfd, proto::makeErr(proto::Stat2Str(status::UsrOp::Err),
+                                        "idle timeout, closing"));
+            LOG_INFO("fd = %d idle timeout, closing", cfd);
+            break;
+        }
+        
+        if (r != net::RecvLineResult::Ok) {
+            // Closed / Error：对端关闭或其他错误
             if (logger::enabled(logger::Level::Info)) {
                 auto name = usrGet(cfd);
                 LOG_INFO("peer closed: fd = %d, usr = %s",

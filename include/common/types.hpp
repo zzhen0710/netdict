@@ -15,7 +15,7 @@ namespace status {
         NotFound,       ///< 用户不存在
         Exists,         ///< 用户名已存在
         WrongPwd,       ///< 密码错误
-        Err,            ///< 其他错误
+        Err,            ///< 其他错误（eg.client idle timeout）
     };
 
     /// 查词操作
