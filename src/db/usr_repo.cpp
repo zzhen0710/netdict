@@ -128,24 +128,37 @@ bool UsrRepo::addHistory(const std::string& name,
 /// 取最近 limit 条历史（按 rowid 倒序）。
 bool UsrRepo::getHistory(const std::string& name, size_t limit,
                          std::vector<HistoryEntry>& out) {
-    out.clear();
+    out.clear();   // 清空输出
 
-    // 用 rowid desc 代替 time desc：避免同秒多条时顺序不稳
+    // 内层：按 (word, time) 分组，取每组最大 rowid（最近一次），
+    //       按 max(rowid) 倒序，取前 limit 个 (word, time)；
+    // 外层：把这些 (word, time) 的所有历史行取出来，按 rowid 倒序。
+    // 目的：limit 限制的是"最近查过的 (词, 时间) 组数"，不是行数；
+    //       同一词不同时间算不同组（与旧版"按 word 分组"不同）。
     StmtGuard stmt(db_.get(),
         "select word, pos, mean, time from history "
-        "where name = ? order by rowid desc limit ?");
+        "where name = ? and (word, time) in ("
+        "    select word, time from history "
+        "    where name = ? "
+        "    group by word, time "
+        "    order by max(rowid) desc "
+        "    limit ?"
+        ") "
+        "order by rowid desc");
 
-    sqlite3_bind_text(stmt.get(), 1, name.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_int64(stmt.get(), 2, static_cast<sqlite3_int64>(limit));
+    sqlite3_bind_text(stmt.get(), 1, name.c_str(), -1, SQLITE_TRANSIENT);   // 外层 name
+    sqlite3_bind_text(stmt.get(), 2, name.c_str(), -1, SQLITE_TRANSIENT);   // 子查询 name
+    sqlite3_bind_int64(stmt.get(), 3, static_cast<sqlite3_int64>(limit));   // 组数上限
 
     // 逐行读结果；空结果也算成功
     int rc;
     while ((rc = sqlite3_step(stmt.get())) == SQLITE_ROW) {
-        const auto* w = sqlite3_column_text(stmt.get(), 0);
-        const auto* p = sqlite3_column_text(stmt.get(), 1);
-        const auto* m = sqlite3_column_text(stmt.get(), 2);
-        const auto* t = sqlite3_column_text(stmt.get(), 3);
+        const auto* w = sqlite3_column_text(stmt.get(), 0);   // 列 0：word
+        const auto* p = sqlite3_column_text(stmt.get(), 1);   // 列 1：pos
+        const auto* m = sqlite3_column_text(stmt.get(), 2);   // 列 2：mean
+        const auto* t = sqlite3_column_text(stmt.get(), 3);   // 列 3：time
 
+        // 判空防 UB；直接 emplace
         out.push_back({
             w ? reinterpret_cast<const char*>(w) : "",
             p ? reinterpret_cast<const char*>(p) : "",
@@ -154,6 +167,7 @@ bool UsrRepo::getHistory(const std::string& name, size_t limit,
         });
     }
 
+    // DONE 才算正常读完（空结果也是 DONE）
     return rc == SQLITE_DONE;
 }
 
@@ -228,23 +242,34 @@ status::Query UsrRepo::unstar(const std::string& name, const std::string& word) 
 /// @return status::Query::Ok / Err
 status::Query UsrRepo::getStars(const std::string& name, size_t limit,
                                 std::vector<StarEntry>& out) {
-    out.clear();
+    out.clear();   // 清空输出
 
+    // 内层：取该用户收藏的前 limit 个不同 word（字母序）；
+    // 外层：把这些 word 的所有释义取出来（按 word 排序）。
+    // 目的：limit 限制的是"词数"，不是"行数"。
     StmtGuard stmt(db_.get(),
         "select word, pos, mean, time from star "
-        "where name = ? order by word asc limit ?");
+        "where name = ? and word in ("
+        "    select distinct word from star "
+        "    where name = ? "
+        "    order by word asc "
+        "    limit ?"
+        ") "
+        "order by word asc");
 
-    sqlite3_bind_text(stmt.get(), 1, name.c_str(), -1, SQLITE_STATIC);
-    sqlite3_bind_int64(stmt.get(), 2, static_cast<sqlite3_int64>(limit));
+    sqlite3_bind_text(stmt.get(), 1, name.c_str(), -1, SQLITE_STATIC);   // 外层 name
+    sqlite3_bind_text(stmt.get(), 2, name.c_str(), -1, SQLITE_STATIC);   // 内层 name
+    sqlite3_bind_int64(stmt.get(), 3, static_cast<sqlite3_int64>(limit)); // 词数上限
 
     // 逐行读结果
     int rc;
     while ((rc = sqlite3_step(stmt.get())) == SQLITE_ROW) {
-        const auto* w = sqlite3_column_text(stmt.get(), 0);
-        const auto* p = sqlite3_column_text(stmt.get(), 1);
-        const auto* m = sqlite3_column_text(stmt.get(), 2);
-        const auto* t = sqlite3_column_text(stmt.get(), 3);
+        const auto* w = sqlite3_column_text(stmt.get(), 0);   // 列 0：word
+        const auto* p = sqlite3_column_text(stmt.get(), 1);   // 列 1：pos
+        const auto* m = sqlite3_column_text(stmt.get(), 2);   // 列 2：mean
+        const auto* t = sqlite3_column_text(stmt.get(), 3);   // 列 3：time
 
+        // 判空防 UB；直接 emplace
         out.push_back({
             w ? reinterpret_cast<const char*>(w) : "",
             p ? reinterpret_cast<const char*>(p) : "",
@@ -253,5 +278,6 @@ status::Query UsrRepo::getStars(const std::string& name, size_t limit,
         });
     }
 
+    // DONE 才算正常读完；否则 Err
     return rc == SQLITE_DONE ? status::Query::Ok : status::Query::Err;
 }
