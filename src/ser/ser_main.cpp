@@ -15,6 +15,7 @@
 
 #include <csignal>      // std::signal
 #include <exception>    // std::exception 基类
+#include <sys/stat.h>   // mkdir
 
 // 全局指针，供信号处理函数调 requestStop()（signal handler 不能捕获复杂状态）
 static Server* g_server = nullptr;
@@ -35,23 +36,31 @@ int main(int argc, char* argv[]) {
     std::string ip = (argc > 1) ? argv[1] : net::DEFAULT_IP;
     int port = (argc > 2) ? std::atoi(argv[2]) : net::DEFAULT_PORT;
 
+    // 确保 logs 目录存在
+    mkdir("logs", 0755);   // 存在则忽略（返回 -1 + EEXIST，正常）
+    // 2. 日志走文件：避免日志（stderr）和终端 prompt（stdout）混在一起。
+    //    打开失败不致命，退回 stderr（logger::file() 默认 stderr）。
+    if (!logger::setFile("logs/netdict_server.log")) {
+        LOG_WARN("open logs/netdict.log failed, fallback to stderr");
+    }
+
     try {
-        // 2. 打开数据库（不存在则建表）
+        // 3. 打开数据库（不存在则建表）
         DictRepo dict("data/dict.db");
         UsrRepo  usr("data/usr.db");
 
-        // 3. 导入词库（表非空则跳过）
+        // 4. 导入词库（表非空则跳过）
         if (!dict.initFromFile("data/dict.txt")) {
             LOG_WARN("dict.txt not loaded (missing or already imported)");
         }
 
-        // 4. 构造 Server 并注册信号
+        // 5. 构造 Server 并注册信号
         Server server(dict, usr, ip, port);
         g_server = &server;
         std::signal(SIGINT,  onSignal);
         std::signal(SIGTERM, onSignal);
 
-        // 5. 进入 epoll 主循环（阻塞直到 requestStop）
+        // 6. 进入 epoll 主循环（阻塞直到 requestStop）
         server.run();
     } catch (const std::exception& e) {
         LOG_ERR("fatal: %s", e.what());

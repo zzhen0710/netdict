@@ -9,11 +9,13 @@
 
 #include "cli/cli.hpp"
 #include "common/net.hpp"
+#include "common/logger.hpp"
 
 #include <csignal>      // std::signal
 #include <exception>    // std::exception 基类
 #include <iostream>
 #include <unistd.h>     // std::write
+#include <sys/stat.h>   // mkdir
 
 // 全局指针：signal handler 只能操作简单状态
 static Cli* g_cli = nullptr;
@@ -32,14 +34,21 @@ int main(int argc, char* argv[]) {
     std::string ip = (argc > 1) ? argv[1] : net::DEFAULT_IP;
     int port = (argc > 2) ? std::atoi(argv[2]) : net::DEFAULT_PORT;
 
+    // 2. 日志走文件：避免日志（stderr）和 prompt（stdout）混。
+    mkdir("logs", 0755);
+    if (!logger::setFile("logs/netdict_client.log")) {
+        // 打开失败：退回 stderr（logger::file() 默认 stderr）
+        LOG_WARN("open logs/netdict_client.log failed, fallback to stderr");
+    }
+
     try {
-        // 2. 构造 Client 连接服务器并注册信号
+        // 3. 构造 Client 连接服务器并注册信号
         Cli cli(ip, port);
         g_cli = &cli;
         std::signal(SIGINT,  onSignal);     
         std::signal(SIGTERM, onSignal);    
 
-        // 3. 进入"读 → 发 → 收 → 显示"循环
+        // 4. 进入"读 → 发 → 收 → 显示"循环
         cli.run();
     } catch (const std::exception& e) {
         std::cerr << "client: " << e.what() << '\n';
