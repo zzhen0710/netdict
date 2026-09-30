@@ -82,14 +82,15 @@ void Cli::run() {
     printLine("welcome to netdict client");
     printLine("type .help for commands, Ctrl+D to quit");
 
+    // 欢迎信息打印后，才进编辑（raw mode）。延迟到这才构造。
+    // 编辑会话：整个 run 期间一个，start/stop 手动切换。
+    // 构造 = EditStart（进 raw mode），析构兜底 Stop。
+    editor_.emplace(STDIN_FILENO, STDOUT_FILENO, "netdict> ");
+
     // poll 监听：stdin（用户输入）+ socket（服务器数据/断开）
     pollfd fds[2];
     fds[0].fd = STDIN_FILENO;  fds[0].events = POLLIN;
     fds[1].fd = sock_fd_;      fds[1].events = POLLIN;
-
-    // 编辑会话：整个 run 期间一个，start/stop 手动切换。
-    // 构造 = EditStart（进 raw mode），析构兜底 Stop。
-    LineEditor editor(STDIN_FILENO, STDOUT_FILENO, "netdict> ");
 
     bool kicked = false;   // true = 被服务器终态通知踢下线（被动退出）
 
@@ -98,7 +99,7 @@ void Cli::run() {
         int n = poll(fds, 2, -1);   // 阻塞等；-1 = 不限时
         if (n < 0) {
             if (errno == EINTR) continue;   // 信号打断，重试
-            editor.stop();                  // 退编辑，回正常模式，才能打印
+            editor_->stop();                  // 退编辑，回正常模式，才能打印
             LOG_ERR("poll failed");
             break;
         }
@@ -110,7 +111,7 @@ void Cli::run() {
 
             // r == 0：对端关闭（FIN）。先退编辑（回正常模式），再打印。
             if (r == 0) {
-                editor.stop();
+                editor_->stop();
                 printLine("[server disconnected]");
                 break;
             }
@@ -120,11 +121,11 @@ void Cli::run() {
             //     true  = ok 状态词 → 非终态通知 → 继续等用户输入
             //     非 true = err / 其他 → 终态通知（如 idle timeout）→ 等键退出
             if (r > 0) {
-                editor.stop();   // 退编辑，回正常模式，才能打印
+                editor_->stop();   // 退编辑，回正常模式，才能打印
 
                 if (handleResp()) {
                     // 非终态：重新进编辑，继续等用户输入
-                    editor.start();
+                    editor_->start();
                 } else {
                     // 终态：等用户按键看清提示，再标记被动退出
                     kicked = true;
@@ -139,7 +140,7 @@ void Cli::run() {
 
         // 分支 2：stdin 可读（用户敲键）
         if (fds[0].revents & POLLIN) {
-            auto r = editor.feed();   // 喂一个键；可能返回 More / Eof / Line
+            auto r = editor_->feed();   // 喂一个键；可能返回 More / Eof / Line
 
             if (r == LineEditor::FeedResult::More) {
                 continue;   // 还在编辑（没回车）
@@ -149,8 +150,8 @@ void Cli::run() {
             }
 
             // Line：拿到整行。先退编辑（回正常模式），再处理、打印。
-            std::string line = editor.line();
-            editor.stop();
+            std::string line = editor_->line();
+            editor_->stop();
 
             // 非空行入历史
             if (!line.empty()) {
@@ -158,10 +159,10 @@ void Cli::run() {
             }
             if (!handleCmd(line)) break;   // false = .quit，退出
 
-            editor.start();   // 重新进编辑，准备下一行
+            editor_->start();   // 重新进编辑，准备下一行
         }
     }
-    // editor 析构：兜底 Stop（幂等）
+    // editor_（optional）析构 → LineEditor 析构 → EditStop
     
     // 被动退出（被服务器踢）：补 goodbye
     if (kicked) {

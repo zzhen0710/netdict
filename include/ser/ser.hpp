@@ -31,8 +31,9 @@ public:
            std::string_view ip = net::DEFAULT_IP,
            int port = net::DEFAULT_PORT);
 
-    /// 析构：FdGuard 自动关闭 listen_fd_ / epoll_fd_。
-    ~Server();
+    /// 析构：成员 RAII 自动清理（FdGuard / ThreadPool / optional<LineEditor>）。
+    /// 无手动逻辑，= default。
+    ~Server() = default;
 
     Server(const Server&) = delete;
     Server& operator=(const Server&) = delete;

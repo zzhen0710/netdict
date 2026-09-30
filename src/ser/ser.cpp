@@ -96,9 +96,6 @@ Server::Server(DictRepo& dict, UsrRepo& usr,
     LOG_INFO("server listen on %s : %d", ip_.c_str(), port_);
 }
 
-/// 析构：FdGuard 自动关闭 listen_fd_ / epoll_fd_。
-Server::~Server() {}
-
 // ---- 停止 / 运行 ----
 
 /// 请求停止：只置标志，供信号 handler 调。

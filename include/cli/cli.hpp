@@ -7,6 +7,7 @@
 #include "common/net.hpp"           // net::DEFAULT_IP / DEFAULT_PORT
 
 #include <atomic>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -54,5 +55,6 @@ private:
     int               sock_fd_;         ///< 连接套接字
     std::atomic<bool> running_{false};  ///< 运行标志（信号 handler 与 run 竞争置 false）
 
-    EditorHistory     editor_history_;  ///< linenoise 历史（进程级，构造 Load / 析构 Save）
+    EditorHistory     editor_history_;              ///< 历史（进程级，构造 Load / 析构 Save）
+    std::optional<LineEditor> editor_;              ///< 编辑会话（run 里 emplace，延迟构造）
 };
