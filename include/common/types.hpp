@@ -39,6 +39,5 @@ namespace status {
 
 /// 一条字典释义
 struct Meaning {
-    long long   rowid;   ///< 数据库行号（对应 SQLite 的 rowid，64 位有符号）
     std::string text;    ///< 释义文本
 };

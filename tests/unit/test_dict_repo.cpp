@@ -48,7 +48,6 @@ int main() {
         assert(s == status::Query::Ok);
         assert(out.size() == 1);
         assert(out[0].text == "n.苹果");
-        assert(out[0].rowid > 0);          // rowid 是正整数
     }
 
     // ==================== 5. query 行首/行尾空格已被裁剪 ====================
@@ -86,8 +85,7 @@ int main() {
         auto s = repo2.query("apple", out);
         assert(s == status::Query::Ok);
         assert(out.size() == 2);           // apple 有两条释义
-        // rowid 各不相同
-        assert(out[0].rowid != out[1].rowid);
+        assert(out[0].text != out[1].text);   // 两条释义文本不同
     }
 
     // ==================== 清理 ====================

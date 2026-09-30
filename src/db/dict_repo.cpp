@@ -85,18 +85,16 @@ status::Query DictRepo::query(const std::string& word, std::vector<Meaning>& out
     out.clear();
 
     // SQLITE_STATIC：word 是函数参数，活到函数结束，无需复制
-    StmtGuard stmt(db_.get(), "select rowid, mean from dict where word = ?");
+    StmtGuard stmt(db_.get(), "select mean from dict where word = ?");
     sqlite3_bind_text(stmt.get(), 1, word.c_str(), -1, SQLITE_STATIC);
 
     // 一个 word 可能多条释义：逐行读，直到 SQLITE_DONE
     int rc;
     while ((rc = sqlite3_step(stmt.get())) == SQLITE_ROW) {
         out.emplace_back();          // 先占位再回填，省一次移动
-        auto& m = out.back();
 
-        m.rowid = sqlite3_column_int64(stmt.get(), 0);          // 列 0：rowid
-        const auto* txt = sqlite3_column_text(stmt.get(), 1);   // 列 1：mean（可能 NULL）
-        m.text = txt ? reinterpret_cast<const char*>(txt) : ""; // 判空防 UB
+        const auto* txt = sqlite3_column_text(stmt.get(), 1);   // 列 0：mean（可能 NULL）
+        out.back().text = txt ? reinterpret_cast<const char*>(txt) : ""; // 判空防 UB
     }
 
     if (rc != SQLITE_DONE) return status::Query::Err;
