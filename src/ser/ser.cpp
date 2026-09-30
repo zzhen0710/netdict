@@ -317,20 +317,32 @@ void Server::handleClient(int cfd) {
                     cfd, who, static_cast<int>(line.size()), line.data());
         }
 
-        // 1. 解析成 Msg；失败回 bad request
-        auto msg = proto::decodeUsr(line);
-        if (!msg) {
-            sendLine(cfd, proto::makeErr("err", "bad request"));
-            continue;
-        }
+        // 单请求处理：decode + visit 抛异常（如 SQL 错、stoi 异常）
+        // 时只回 err，连接继续（不崩进程即整个服务器、不断连接）。
+        try {
+            // 1. 解析成 Msg；失败回 bad request
+            auto msg = proto::decodeUsr(line);
+            if (!msg) {
+                sendLine(cfd, proto::makeErr("err", "bad request"));
+                continue;
+            }
 
-        // 2. 按命令类型分发：用户命令处理，系统命令拒绝
-        std::visit(utils::overloaded {
-            [&](proto::UsrCmd::Dict c) { handleUsrDict(cfd, *msg, c); },
-            [&](proto::UsrCmd::Ctrl c) { handleUsrCtrl(cfd, *msg, c); },
-            [&](proto::SysCmd::Dict)   { sendLine(cfd, proto::makeErr("err", "forbidden")); },
-            [&](proto::SysCmd::Ctrl)   { sendLine(cfd, proto::makeErr("err", "forbidden")); },
-        }, msg->cmd);
+            // 2. 按命令类型分发：用户命令处理，系统命令拒绝
+            std::visit(utils::overloaded {
+                [&](proto::UsrCmd::Dict c) { handleUsrDict(cfd, *msg, c); },
+                [&](proto::UsrCmd::Ctrl c) { handleUsrCtrl(cfd, *msg, c); },
+                [&](proto::SysCmd::Dict)   { sendLine(cfd, proto::makeErr("err", "forbidden")); },
+                [&](proto::SysCmd::Ctrl)   { sendLine(cfd, proto::makeErr("err", "forbidden")); },
+            }, msg->cmd);
+        } catch (const std::exception& e) {
+            // 标准异常：记日志 + 回内部错误，连接保留
+            LOG_ERR("handle request failed: fd = %d, err = %s", cfd, e.what());
+            sendLine(cfd, proto::makeErr("err", "internal error"));
+        } catch (...) {
+            // 非标准异常：兜底，同样回内部错误
+            LOG_ERR("handle request failed: fd = %d, unknown error", cfd);
+            sendLine(cfd, proto::makeErr("err", "internal error"));
+        }
     }
 
     // 统一出口：关 fd + 从 conns_ 摘除（同一临界区）
@@ -420,21 +432,33 @@ void Server::handleSystem() {
     std::string line = editor_->line();
     editor_->stop();
 
-    // decodeSys
-    auto msg = proto::decodeSys(line);
-    if (!msg) {
-        if (!line.empty()) utils::printLine("bad request");
-        editor_->start();
-        return;
-    }
+    // 单条命令兜底：decode + visit 抛异常时不崩服务器
+    // 只打印错误，循环继续。
+    try {
+        // 1. 解析成 Msg；空行重开编辑器，非法命令回 bad request
+        auto msg = proto::decodeSys(line);
+        if (!msg) {
+            if (!line.empty()) utils::printLine("bad request");
+            editor_->start();
+            return;
+        }
 
-    // 分发：SysCmd 处理，UsrCmd 拒绝
-    std::visit(utils::overloaded {
-        [&](proto::SysCmd::Dict c) { handleSysDict(*msg, c); },
-        [&](proto::SysCmd::Ctrl c) { handleSysCtrl(*msg, c); },
-        [&](proto::UsrCmd::Dict)   { utils::printLine("forbidden"); },
-        [&](proto::UsrCmd::Ctrl)   { utils::printLine("forbidden"); },
-    }, msg->cmd);
+        // 2. 按命令类型分发：系统命令处理，用户命令拒绝
+        std::visit(utils::overloaded {
+            [&](proto::SysCmd::Dict c) { handleSysDict(*msg, c); },
+            [&](proto::SysCmd::Ctrl c) { handleSysCtrl(*msg, c); },
+            [&](proto::UsrCmd::Dict)   { utils::printLine("forbidden"); },
+            [&](proto::UsrCmd::Ctrl)   { utils::printLine("forbidden"); },
+        }, msg->cmd);
+    } catch (const std::exception& e) {
+        // 标准异常：记日志 + 把原因打印到 Admin
+        LOG_ERR("handle system cmd failed: %s", e.what());
+        utils::printLine(std::string("internal error: ") + e.what());
+    } catch (...) {
+        // 非标准异常：兜底，避免漏网导致进程终止
+        LOG_ERR("handle system cmd failed: unknown error");
+        utils::printLine("internal error");
+    }
 
     editor_->start();   // 重新进编辑，准备下一行
 }
