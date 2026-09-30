@@ -49,7 +49,6 @@ add_executable(netdict_server
     src/ser/thread_pool.cpp     # 线程池
     src/db/dict_repo.cpp        # 字典仓储
     src/db/usr_repo.cpp         # 用户仓储
-    src/common/cmd.cpp          # 交互指令
     src/common/proto.cpp        # 协议约定
     src/common/utils.cpp        # 通用工具
     src/common/logger.cpp       # 日志
@@ -57,6 +56,8 @@ add_executable(netdict_server
     src/common/line_editor.cpp  # 行编辑工具
     src/ser/handle_usr_dict.cpp # 处理用户字典请求
     src/ser/handle_usr_ctrl.cpp # 处理用户控制请求
+    src/ser/handle_sys_dict.cpp # 处理系统字典
+    src/ser/handle_sys_ctrl.cpp # 处理系统控制
 )
 
 # 服务器链接：SQLite3 + 线程库 + linenoise
@@ -69,8 +70,7 @@ target_link_libraries(netdict_server PRIVATE
 # ---------- 客户端可执行文件 ----------
 add_executable(netdict_client
     src/cli/cli_main.cpp        # 客户端入口 main
-    src/cli/cli.cpp             # 客户端逻辑
-    src/common/cmd.cpp             
+    src/cli/cli.cpp             # 客户端逻辑         
     src/common/proto.cpp
     src/common/utils.cpp        
     src/common/logger.cpp
