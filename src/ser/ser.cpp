@@ -3,7 +3,6 @@
 
 #include "ser/ser.hpp"
 #include "common/logger.hpp"
-#include "common/net.hpp"
 #include "common/utils.hpp"     // utils::overloaded
 
 #include <arpa/inet.h>      // inet_addr, inet_ntoa
@@ -11,7 +10,7 @@
 #include <sys/epoll.h>      // epoll_create1, epoll_ctl, epoll_event, EPOLLIN
 #include <sys/socket.h>     // socket, bind, listen, accept, setsockopt
 #include <fcntl.h>          // fcntl, F_GETFL, F_SETFL, O_NONBLOCK
-#include <unistd.h>         // close
+#include <unistd.h>         // close, isatty
 
 #include <cerrno>           // errno, EAGAIN, EWOULDBLOCK, EINTR
 #include <cstring>          // std::strerror
@@ -25,6 +24,12 @@ namespace {
     /// 连接空闲超时（秒）：工作线程阻塞 recv 时，到点被踢。
     /// 测试阶段 5 秒；正式可改大（如 3600 = 1 小时）。
     constexpr int kRecvTimeoutSec = 3600;
+
+    /// 管理终端内存历史上限
+    constexpr int kAdminHistoryMaxLen = 100;
+
+    /// 管理终端历史文件名（拼到家目录；ser 专用，cli 用 netdict_cli_history）
+    constexpr const char* kAdminHistoryFile = "/.netdict_admin_history";
 }
 // ---- 构造 / 析构 ----
 
@@ -33,7 +38,8 @@ Server::Server(DictRepo& dict, UsrRepo& usr,
                std::string_view ip, int port)
     : dict_(dict), usr_(usr),
       thread_pool_(4),
-      ip_(ip), port_(port), running_(false) {   // 列表初始化顺序要和成员变量声明顺序一致
+      ip_(ip), port_(port), running_(false),
+      editor_history_(kAdminHistoryMaxLen, kAdminHistoryFile) {   // 列表初始化顺序要和成员变量声明顺序一致
 
     // 1.创建 TCP 套接字
     {   // 块限制裸 fd 作用域，随后被 RAII 接管
@@ -85,11 +91,26 @@ Server::Server(DictRepo& dict, UsrRepo& usr,
     // 8. 把 listen_fd_ 加入 epoll，监听可读（有新连接）
     {   // 块限制 ev 作用域，只用于注册添加 listen_fd_
         epoll_event ev{};
-        ev.events = EPOLLIN;
-        ev.data.fd = listen_fd_.get();
+        ev.events = EPOLLIN;                // 关心可读
+        ev.data.fd = listen_fd_.get();      // 事件带回 fd = listen_fd_
+
         if (epoll_ctl(epoll_fd_.get(), EPOLL_CTL_ADD,
                       listen_fd_.get(), &ev) < 0) {
             throw std::runtime_error("epoll_ctl add listen_fd failed");
+        }
+    }
+
+    // 9. 把 STDIN_FILENO 加入 epoll，监听管理命令（仅当 stdin 是 tty）
+    //    非 tty（后台 / 重定向 / 管道）时不加，避免误触发。
+    if (isatty(STDIN_FILENO)) {
+        epoll_event ev_stdin{};
+        ev_stdin.events = EPOLLIN;
+        ev_stdin.data.fd = STDIN_FILENO;    
+
+        if (epoll_ctl(epoll_fd_.get(), EPOLL_CTL_ADD,
+                    STDIN_FILENO, &ev_stdin) < 0) {
+            LOG_WARN("epoll_ctl add stdin failed: %s", std::strerror(errno));
+            // 不致命：管理终端不可用，但服务器能跑
         }
     }
 
@@ -107,6 +128,19 @@ void Server::requestStop() {
 
 void Server::run() {
     running_ = true;                    // 置运行标志，进入主循环
+    
+    // ---- 管理终端初始化 ----
+    // 管理终端（stdin 交互）仅在"stdin 是 tty"时有意义：
+    //   tty（交互终端）  → 打印说明 + 延迟构造编辑会话（进 raw mode）。
+    //   非 tty（后台/重定向）→ 不构造；服务照常，仅管理终端不可用。
+    // （LineEditor 内部也判 tty：tty 走 linenoise，非 tty 走 getline；
+    //   但这里外层判是为了"非 tty 下根本不建编辑会话"。）
+    if (isatty(STDIN_FILENO)) {
+        utils::printLine("netdict admin console ready (type .help)");
+        editor_.emplace(STDIN_FILENO, STDOUT_FILENO, "netdict> ");
+    } else {
+        LOG_WARN("stdin is not a tty; admin console disabled");
+    }
 
     epoll_event events[kMaxEvents];     // 事件数组，epoll_wait 往里填就绪事件
 
@@ -130,6 +164,8 @@ void Server::run() {
 
             if (fd == listen_fd_.get()) {
                 handleAccept();              // 监听 fd：新连接
+            } else if (fd == STDIN_FILENO) {
+                handleSystem();              // 管理终端：读一行命令
             } else {
                 handleConn(fd);              // 连接就绪：DEL + addTask
             }
@@ -362,7 +398,48 @@ void Server::usrClear(int cfd) {
     LOG_DEBUG("usrClear: fd = %d", cfd);
 }
 
-// ---- 发送辅助 ----
+// ---- 管理终端（stdin 命令） ----
+
+/// 处理一行管理命令：读一行（LineEditor）→ decodeSys → visit 分发。
+/// stdin 可读时调一次。
+void Server::handleSystem() {
+    if (!editor_) return;   // 无编辑会话（非 tty），忽略
+
+    // 喂事件：读一行
+    auto r = editor_->feed();
+    if (r == LineEditor::FeedResult::More) return;   // 还没回车，继续等
+    if (r == LineEditor::FeedResult::Eof) {
+        // EOF（Ctrl+D）：管理终端关闭，不影响服务器运行
+        editor_.reset();     // 销毁 optional 内的 LineEditor（析构自动 stop）
+        utils::printLine("[admin console closed]");
+        requestStop();       // 管理终端 EOF，也停服务器
+        return;
+    }
+
+    // 拿到整行：先退编辑（回正常模式），再处理、打印
+    std::string line = editor_->line();
+    editor_->stop();
+
+    // decodeSys
+    auto msg = proto::decodeSys(line);
+    if (!msg) {
+        if (!line.empty()) utils::printLine("bad request");
+        editor_->start();
+        return;
+    }
+
+    // 分发：SysCmd 处理，UsrCmd 拒绝
+    std::visit(utils::overloaded {
+        [&](proto::SysCmd::Dict c) { handleSysDict(*msg, c); },
+        [&](proto::SysCmd::Ctrl c) { handleSysCtrl(*msg, c); },
+        [&](proto::UsrCmd::Dict)   { utils::printLine("forbidden"); },
+        [&](proto::UsrCmd::Ctrl)   { utils::printLine("forbidden"); },
+    }, msg->cmd);
+
+    editor_->start();   // 重新进编辑，准备下一行
+}
+
+// ---- 发送工具 ----
 
 /// 发送原始字节（不补 \n）；net::sendAll 保证发完整。
 void Server::sendBytes(int cfd, std::string_view data) {
