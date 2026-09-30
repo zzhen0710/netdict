@@ -13,54 +13,52 @@ int main() {
 
     // ==================== 1. reg ====================
     {
-        // 首次注册成功
         assert(repo.reg("alice", "123") == status::UsrOp::Ok);
-        // 重复注册 → Exists
         assert(repo.reg("alice", "456") == status::UsrOp::Exists);
-        // 另一个用户
-        assert(repo.reg("bob", "abc") == status::UsrOp::Ok);
+        assert(repo.reg("bob", "abc")   == status::UsrOp::Ok);
     }
     std::cout << "[OK] reg\n";
 
     // ==================== 2. login ====================
     {
-        // 用户不存在
-        assert(repo.login("nobody", "x") == status::UsrOp::NotFound);
-        // 密码错
+        assert(repo.login("nobody", "x")   == status::UsrOp::NotFound);
         assert(repo.login("alice", "wrong") == status::UsrOp::WrongPwd);
-        // 正确登录
-        assert(repo.login("alice", "123") == status::UsrOp::Ok);
-        // 重复登录仍 Ok（多设备；在线由 Server 的 sessions_ 管）
-        assert(repo.login("alice", "123") == status::UsrOp::Ok);
+        assert(repo.login("alice", "123")   == status::UsrOp::Ok);
     }
     std::cout << "[OK] login\n";
 
     // ==================== 3. 历史 ====================
     {
-        // 写三条
-        assert(repo.addHistory("alice", {"apple", "n.苹果", "2026-01-01 10:00:00"}));
-        assert(repo.addHistory("alice", {"book",  "n.书",   "2026-01-01 10:01:00"}));
-        assert(repo.addHistory("alice", {"cat",   "n.猫",   "2026-01-01 10:02:00"}));
-        // bob 一条，验证按 name 隔离
-        assert(repo.addHistory("bob", {"dog", "n.狗", "2026-01-01 11:00:00"}));
+        // 一个词多条释义（vector<Meaning>）
+        std::vector<Meaning> apple_defs = {
+            {"n.", "苹果"},
+        };
+        std::vector<Meaning> like_defs = {
+            {"v.",    "喜欢"},
+            {"prep.", "像"},
+        };
 
-        // 取最近 2 条：按 rowid 倒序 → cat / book
+        // 写历史
+        assert(repo.addHistory("alice", "apple", apple_defs, "2026-01-01 10:00:00"));
+        assert(repo.addHistory("alice", "like",  like_defs,  "2026-01-01 10:01:00"));
+        assert(repo.addHistory("bob",   "dog",
+                               {{"n.", "狗"}}, "2026-01-01 11:00:00"));
+
+        // 取 alice 最近 10 条：like 2 行 + apple 1 行 = 3 行
         std::vector<HistoryEntry> out;
-        assert(repo.getHistory("alice", 2, out));
-        assert(out.size() == 2);
-        assert(out[0].word == "cat");
-        assert(out[1].word == "book");
-
-        // 取 10 条：只有 3 条
         assert(repo.getHistory("alice", 10, out));
-        assert(out.size() == 3);
+        assert(out.size() == 3);          // like(2) + apple(1)
+        // 按 rowid desc：like 的两行先（10:01），再 apple
+        assert(out[0].word == "like");
+        assert(out[1].word == "like");
+        assert(out[2].word == "apple");
 
-        // bob 只看到自己的 1 条
+        // bob 只有 1 条
         assert(repo.getHistory("bob", 10, out));
         assert(out.size() == 1);
         assert(out[0].word == "dog");
 
-        // 无历史用户返回空
+        // 无历史用户
         assert(repo.getHistory("nobody", 10, out));
         assert(out.empty());
     }
@@ -68,40 +66,44 @@ int main() {
 
     // ==================== 4. star / unstar / getStars ====================
     {
-        // 首次收藏
-        assert(repo.star("alice", {"apple", "n.苹果", "2026-01-01 10:00:00"})
+        std::vector<Meaning> apple_defs = {{"n.", "苹果"}};
+        std::vector<Meaning> like_defs  = {{"v.", "喜欢"}, {"prep.", "像"}};
+
+        // 首次收藏 apple
+        assert(repo.star("alice", "apple", apple_defs, "2026-01-01 10:00:00")
                    == status::Query::Ok);
-        // 重复收藏 → Starred
-        assert(repo.star("alice", {"apple", "n.苹果", "2026-01-01 10:00:00"})
+        // 重复收藏 apple → Starred
+        assert(repo.star("alice", "apple", apple_defs, "2026-01-01 10:00:00")
                    == status::Query::Starred);
-        // 再收藏两个
-        assert(repo.star("alice", {"cat", "n.猫", "2026-01-01 10:01:00"})
-                   == status::Query::Ok);
-        assert(repo.star("alice", {"book", "n.书", "2026-01-01 10:02:00"})
+
+        // 收藏 like（2 释义 → star 表 2 行）
+        assert(repo.star("alice", "like", like_defs, "2026-01-01 10:01:00")
                    == status::Query::Ok);
 
-        // 字母序：apple / book / cat
+        // 字母序：apple / like；like 有 2 行
         std::vector<StarEntry> stars;
         assert(repo.getStars("alice", 10, stars) == status::Query::Ok);
-        assert(stars.size() == 3);
-        assert(stars[0].word == "apple" && stars[0].mean == "n.苹果");
-        assert(stars[1].word == "book"  && stars[1].mean == "n.书");
-        assert(stars[2].word == "cat"   && stars[2].mean == "n.猫");
-
-        // limit 生效：取前 2
-        assert(repo.getStars("alice", 2, stars) == status::Query::Ok);
-        assert(stars.size() == 2);
+        assert(stars.size() == 3);        // apple(1) + like(2)
         assert(stars[0].word == "apple");
-        assert(stars[1].word == "book");
+        assert(stars[1].word == "like");
+        assert(stars[2].word == "like");
 
-        // 取消收藏
+        // limit：取前 2 个词（apple 1 行 + like 2 行 = 3 行）
+        assert(repo.getStars("alice", 2, stars) == status::Query::Ok);
+        assert(stars.size() == 3);
+        assert(stars[0].word == "apple");
+        assert(stars[1].word == "like");
+        assert(stars[2].word == "like");
+
+        // 取消收藏 apple
         assert(repo.unstar("alice", "apple") == status::Query::Ok);
-        // 再取消 → 本来就没收藏
+        // 再取消 → Unstarred
         assert(repo.unstar("alice", "apple") == status::Query::Unstarred);
 
-        // 剩 2 条
+        // 剩 like 的 2 行
         assert(repo.getStars("alice", 10, stars) == status::Query::Ok);
         assert(stars.size() == 2);
+        assert(stars[0].word == "like");
 
         // bob 无收藏
         assert(repo.getStars("bob", 10, stars) == status::Query::Ok);
@@ -110,5 +112,6 @@ int main() {
     std::cout << "[OK] star/unstar/getStars\n";
 
     std::cout << "ALL OK\n";
+    
     return 0;
 }

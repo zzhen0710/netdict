@@ -11,23 +11,23 @@
 
 int main() {
     // ==================== 1. 准备测试词库文件 ====================
+    // 格式：TSV 三段 "<word>\t<pos>\t<mean>"，pos / mean 不重复。
     const char* test_txt = "/tmp/netdict_dict_test.txt";
     {
         std::ofstream f(test_txt);
         assert(f);
-        // 故意造：多空格、行首空格、行尾空格、空行、坏行（无空格）
-        f << "apple   n.苹果\n";
-        f << "book   n.书\n";
-        f << "  cat   n.猫  \n";   // 行首/行尾空格
-        f << "\n";                  // 空行
-        f << "broken\n";            // 无空格：应跳过
-        f << "dog   n.狗\n";
+        // 故意造：pos 空、空行、坏行（缺 Tab）
+        f << "apple\tn.\t苹果\n";
+        f << "book\tn.\t书\n";
+        f << "cat\t\t猫\n";                 // pos 空（两个连续 Tab）
+        f << "\n";                          // 空行
+        f << "broken\n";                    // 坏行：无 Tab，跳过
+        f << "dog\tn.\t狗\n";
     }
 
     // ==================== 2. 打开内存库并导入 ====================
     DictRepo repo(":memory:");
 
-    // 初始为空
     assert(repo.count() == 0);
 
     // 导入：4 条有效（apple / book / cat / dog）
@@ -36,28 +36,29 @@ int main() {
     assert(repo.count() == 4);
 
     // ==================== 3. 重复导入应跳过 ====================
-    // 表非空 → initFromFile 直接返回 true，不重复导入
     assert(repo.initFromFile(test_txt));
     assert(repo.count() == 4);
 
-    // ==================== 4. query 命中 ====================
+    // ==================== 4. query 命中（带 pos） ====================
     {
         std::vector<Meaning> out;
         auto s = repo.query("apple", out);
 
         assert(s == status::Query::Ok);
         assert(out.size() == 1);
-        assert(out[0].text == "n.苹果");
+        assert(out[0].pos == "n.");
+        assert(out[0].mean == "苹果");
     }
 
-    // ==================== 5. query 行首/行尾空格已被裁剪 ====================
+    // ==================== 5. query：pos 为空 ====================
     {
         std::vector<Meaning> out;
         auto s = repo.query("cat", out);
 
         assert(s == status::Query::Ok);
         assert(out.size() == 1);
-        assert(out[0].text == "n.猫");     // 无前导/尾随空格
+        assert(out[0].pos.empty());
+        assert(out[0].mean == "猫");
     }
 
     // ==================== 6. query 未命中 ====================
@@ -70,22 +71,62 @@ int main() {
     }
 
     // ==================== 7. query 覆盖多义（同词多行） ====================
-    // 造一个同词多义：往文件追加，清库重导
     {
         std::ofstream f(test_txt, std::ios::app);
-        f << "apple   n.苹果树\n";         // 追加第二条 apple
+        f << "apple\tn.\t苹果树\n";         // 追加第二条 apple
     }
-    // 用新库重导（旧库非空不会重导）
     DictRepo repo2(":memory:");
     assert(repo2.initFromFile(test_txt));
-    assert(repo2.count() == 5);            // 原来 4 条 + 新增 1 条
+    assert(repo2.count() == 5);              // 4 + 1
 
     {
         std::vector<Meaning> out;
         auto s = repo2.query("apple", out);
         assert(s == status::Query::Ok);
-        assert(out.size() == 2);           // apple 有两条释义
-        assert(out[0].text != out[1].text);   // 两条释义文本不同
+        assert(out.size() == 2);             // apple 两条释义
+        assert(out[0].mean != out[1].mean);  // 释义不同
+    }
+
+    // ==================== 8. list 管理接口 ====================
+    {
+        std::vector<DictEntry> out;
+        auto s = repo.list("a%", out);       // a 开头
+        assert(s == status::Admin::Ok);
+        assert(out.size() == 1);
+        assert(out[0].word == "apple");
+        assert(out[0].pos == "n.");
+        assert(out[0].mean == "苹果");
+    }
+
+    // ==================== 9. add / del / update ====================
+    {
+        // add
+        assert(repo.add("fox", Meaning{"n.", "狐狸"}) == status::Admin::Ok);
+
+        std::vector<Meaning> out;
+        assert(repo.query("fox", out) == status::Query::Ok);
+        assert(out.size() == 1);
+        assert(out[0].pos == "n.");
+        assert(out[0].mean == "狐狸");
+
+        // update（改 mean）
+        assert(repo.update("fox", Meaning{"n.", "狐狸（改）"})
+                   == status::Admin::Ok);
+        assert(repo.query("fox", out) == status::Query::Ok);
+        assert(out[0].mean == "狐狸（改）");
+
+        // del
+        assert(repo.del("fox") == status::Admin::Ok);
+        assert(repo.query("fox", out) == status::Query::NotFound);
+
+        // del 不存在的词 → NotFound
+        assert(repo.del("nonexist") == status::Admin::NotFound);
+    }
+
+    // ==================== 10. reload ====================
+    {
+        assert(repo.reload(test_txt) == status::Admin::Ok);
+        assert(repo.count() == 5);           // test_txt 里 5 条
     }
 
     // ==================== 清理 ====================
