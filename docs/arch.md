@@ -294,3 +294,141 @@ netdict/
 - 空闲超时（`SO_RCVTIMEO`）
 - `stop` 拆 `requestStop` / `doStop`（信号安全）
 - `LineEditor` tty 适配（非 tty 走批量）
+
+## `docs/arch.md` 追加两节
+
+**在"## 5. 客户端架构"之后、或文末追加**（我建议放文末"## 13. 请求生命周期" + "## 14. 命令与数据关系"）。
+
+---
+
+## 13. 请求生命周期
+
+以**一次 `.query apple`** 为例，从用户敲键到屏幕显示，端到端流程。
+
+### 13.1 时序
+
+```
+用户敲 ".query apple" 回车
+  │
+  ▼
+[cli] Cli::run
+  ├─ LineEditor::feed() → LineResult::Line（拿到整行）
+  ├─ handleCmd(".query apple")
+  │    └─ sendReq(".query apple")
+  │         ├─ 去 "." → "query apple"
+  │         ├─ 拼 "query apple\n"
+  │         └─ net::sendAll(sock_fd_, ...)
+  │
+  │   ─── TCP ───
+  │
+[ser] Server::handleClient(cfd)         ← worker 线程
+  ├─ net::recvLine(cfd, recv_buf, line)  → "query apple"
+  ├─ proto::decodeUsr(line)
+  │    └─ Msg{ UsrCmd::Dict::Query, {"apple"} }
+  ├─ std::visit(overloaded{...}, msg.cmd)
+  │    └─ handleUsrDict(cfd, msg, Dict::Query)
+  │         └─ doQuery(cfd, msg)
+  │              ├─ usrGet(cfd)                  // 会话：拿登录名
+  │              ├─ dict_.query("apple", out)    // repo：读 dict
+  │              │    └─ StmtGuard: "select pos,mean from dict where word=?"
+  │              │    └─ out = [{n., 苹果,家伙}, {[医], 苹果}]
+  │              ├─ 组装 lines: ["--- apple", "n.\t苹果, 家伙", "[医]\t苹果"]
+  │              ├─ sendLine(cfd, "ok 3")        // 总行数 = 3
+  │              ├─ sendLine(cfd, "--- apple")
+  │              ├─ sendLine(cfd, "n.\t苹果, 家伙")
+  │              ├─ sendLine(cfd, "[医]\t苹果")
+  │              └─ usr_.addHistory(name, "apple", out, now())  // repo：写 history
+  │
+  │   ─── TCP ───
+  │
+[cli] Cli::handleResp
+  ├─ net::recvLine → "ok 3"
+  ├─ proto::isOk → true；respData → "3"（全数字 → 多行）
+  ├─ 读 3 行到 lines = ["--- apple", "n.\t苹果, 家伙", "[医]\t苹果"]
+  ├─ 判首行 "--- " → grouped = true
+  └─ 渲染：
+       apple
+         1. n. 苹果, 家伙
+         2. [医] 苹果
+```
+
+### 13.2 分层职责
+
+| 层 | 职责 | 不碰 |
+|----|------|------|
+| **cli** | 读行、去点、发送、解析响应、渲染 | 不碰 DB |
+| **ser / handler** | 分发、会话、组装响应、输出 | 不直接写 SQL（交 repo） |
+| **db / repo** | SQL、事务、返回结构化数据 | 不碰网络 / 会话 / 输出 |
+| **common** | 协议编解码、网络 IO、日志 | 不含业务 |
+
+**"谁碰谁"单向**：**handler 调 repo**，**repo 不调 handler**。
+
+### 13.3 异常路径
+
+- **任一 `recvLine` 非 `Ok`** → `server disconnected`（cli）/ 连接关闭（ser）
+- **`StmtGuard` 构造抛**（SQL 错）→ `handleClient` 的 `try/catch` → 回 `err`，连接继续
+- **`sendAll` 失败** → `LOG_ERR`，不中断（依赖 TCP 关闭通知对方）
+
+---
+
+## 14. 命令与数据关系
+
+### 14.1 读 / 写总览
+
+| 命令 | 读 | 写 |
+|------|----|----|
+| `query` | `dict` | `history`（自动记） |
+| `star` | `dict`（取释义快照） | `star` |
+| `unstar` | — | `star`（删） |
+| `history` | `history` | — |
+| `pad` | `star` | — |
+| `reg` | `usr`（查重） | `usr` |
+| `login` | `usr` | —（会话入内存） |
+| `logout` | — | —（会话清内存） |
+
+**管理终端**（`doList/View/Add/Del/Update/Reload/Num`）——读 / 写 `dict`；`doStat/History/Pad`——读 `history` / `star`；**不碰 `usr` 之外**。
+
+### 14.2 query / star / history / pad 的关系
+
+```
+                  ┌─────────────┐
+                  │  dict（词条）│
+                  └──────┬──────┘
+            读（pos,mean）│
+        ┌───────────────┴───────────────┐
+        ▼                               ▼
+    ┌───────┐                       ┌───────┐
+    │ query │                       │ star  │
+    └───┬───┘                       └───┬───┘
+  写 history（自动）              写 star（用户收藏，快照）
+        │                               │
+        ▼                               ▼
+    ┌─────────┐                    ┌───────┐
+    │ history │                    │ star  │
+    └────┬────┘                    └───┬───┘
+  读（history 命令）             读（pad 命令）
+```
+
+**要点**：
+
+- **`query`**：读 `dict` → 回响应 → **顺带写 `history`**（用户没主动"记历史"，是 `query` 的副产品）
+- **`star`**：读 `dict`（拿释义）→ **写 `star`**（存 `pos` / `mean` **快照**）
+- **`history` / `pad`**：**只读**各自表，不改任何数据
+
+### 14.3 为什么 star 要读 dict
+
+**`star` 表存 `(name, word, pos, mean, time)`**——`pos` / `mean` 是**收藏那一刻的快照**。
+
+**不读 `dict`，`star` 表里没有 `pos` / `mean`**——所以 `doStar` 先 `dict_.query`。
+
+**好处**：**`dict` 后续被 `update` / `reload` 改了，已收藏的"当时释义"不变**（快照语义）——**符合"收藏"直觉**。
+
+### 14.4 为什么 history 要 batch
+
+**`history` 表存 `(name, word, pos, mean, time, batch)`**。
+
+**一次 `query` = 一个 `batch`**（同次的多条释义共享）；**同一词多次 `query` = 多个 `batch`**。
+
+**`doHistory` 判 `(word, batch)` 换词头**——**同词多次查询 = 多词头**（不混）。
+
+**若不区分 batch**：两次 `query apple` 的 4 条释义会挤进**同一个词头**（错）。
