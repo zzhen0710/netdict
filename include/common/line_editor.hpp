@@ -77,6 +77,7 @@ private:
     int                   ifd_;        ///< 输入 fd（start 用）
     int                   ofd_;        ///< 输出 fd（start 用）
     std::string           prompt_;     ///< 提示符（start 用）
+    bool                  tty_;        ///< ifd 是否 tty（非 tty 时不做行编辑）
 };
 
 /// linenoise 内存历史的 RAII 封装。

@@ -5,17 +5,26 @@
 
 #include <cstdlib>      // std::getenv
 #include <stdexcept>    // std::runtime_error
+#include <unistd.h>     // isatty
+#include <iostream>
 
 // ---------------- LineEditor ----------------
 
-/// 构造：存下 ifd/ofd/prompt，EditStart 进入编辑。
+/// 构造：存下 ifd/ofd/prompt，tty 时 EditStart 进入编辑。
+///
+/// tty（交互终端）  → 走 linenoise 行编辑（start()）。
+/// 非 tty（管道/重定向）→ 不 start()（enableRawMode 会失败）；
+///                        feed() 改用 std::getline 逐行读。
+///
+/// start() 失败时抛异常，构造传播；editing_ 仍为 false，析构不 Stop。
 LineEditor::LineEditor(int ifd, int ofd, const char* prompt)
     : editing_(false),
-      ifd_(ifd), ofd_(ofd), prompt_(prompt) {
+      ifd_(ifd), ofd_(ofd), prompt_(prompt),
+      tty_(isatty(ifd) != 0) {
 
-    // 复用 start()：设 editing_ + EditStart。
-    // 失败时 start() 抛异常，构造传播；editing_ 仍为 false，析构不 Stop。
-    start();
+    if (tty_) {
+        start();
+    }
 }
 
 /// 析构：EditStop（若还在编辑），恢复终端。
@@ -23,8 +32,21 @@ LineEditor::~LineEditor() {
     stop();   // 幂等
 }
 
-/// 喂一个事件：让 linenoise 处理内部输入。
+/// 喂一个事件：读一行或让 linenoise 处理按键。
+/// tty  → 走 linenoise（More / Line / Eof）。
+/// 非 tty → std::getline 读一行（Line / Eof）。
 LineEditor::FeedResult LineEditor::feed() {
+    // 非 tty：直接读一行，无行编辑 / 历史。
+    if (!tty_) {
+        std::string line;
+        if (!std::getline(std::cin, line)) {
+            return FeedResult::Eof;       // EOF
+        }
+        line_ = line;
+        return FeedResult::Line;
+    }
+
+    // tty：走 linenoise 行编辑
     char* res = linenoiseEditFeed(&state_);
 
     // 还在编辑（未回车）：linenoiseEditMore 是哨兵指针，不能 free。
@@ -48,17 +70,27 @@ std::string LineEditor::line() const {
     return line_;
 }
 
-/// 手动退出编辑（回正常模式）；幂等。
+/// 手动退出编辑；幂等。
 void LineEditor::stop() {
-    if (editing_) {
-        linenoiseEditStop(&state_);   // 恢复 raw mode / 关闭 bracketed paste
-        editing_ = false;
+    if (!editing_) return;
+
+    // 非 tty：没进过 linenoise，无需恢复终端。
+    if (tty_) {
+        linenoiseEditStop(&state_); // 恢复 raw mode / 关闭 bracketed paste
     }
+    editing_ = false;
 }
 
 /// 手动进入编辑；幂等。
 void LineEditor::start() {
     if (editing_) return;   // 已在编辑，无需重复
+
+    // 非 tty：不走 linenoise（enableRawMode 会失败），
+    // 只标记"在编辑"，feed() 走 std::getline。
+    if (!tty_) {
+        editing_ = true;
+        return;
+    }
 
     if (linenoiseEditStart(&state_, ifd_, ofd_,
                            buf_, sizeof(buf_), prompt_.c_str()) < 0) {
