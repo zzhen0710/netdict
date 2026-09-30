@@ -62,40 +62,53 @@ private:
     /// 结束时 close(fd) + 从 conns_ 摘除（同一临界区）。
     void handleClient(int cfd);
 
+    // ---- 用户命令：分发 + 细粒度实现 ----
+
+    /// 字典：query / history / star / unstar / pad
+    void handleUsrDict(int cfd, const proto::Msg& msg, proto::UsrCmd::Dict c);
+    void doQuery      (int cfd, const proto::Msg& msg);
+    void doHistory    (int cfd, const proto::Msg& msg);
+    void doStar       (int cfd, const proto::Msg& msg);
+    void doUnstar     (int cfd, const proto::Msg& msg);
+    void doPad        (int cfd, const proto::Msg& msg);
+
+    /// 控制：reg / login / logout / help / quit
+    void handleUsrCtrl(int cfd, const proto::Msg& msg, proto::UsrCmd::Ctrl c);
+    void doReg        (int cfd, const proto::Msg& msg);
+    void doLogin      (int cfd, const proto::Msg& msg);
+    void doLogout     (int cfd, const proto::Msg& msg);      // 签名对齐
+    void doHelp       (int cfd, const proto::Msg& msg);      // 签名对齐
+    void doQuit       (int cfd, const proto::Msg& msg);      // 签名对齐
+
     // ---- 临界区用户会话管理：查 / 记 / 清（操作 conns_[fd].usr） ----
 
     std::optional<std::string> usrGet(int cfd);
     void usrSet(int cfd, const std::string& name);
     void usrClear(int cfd);
 
-    // ---- 用户命令：分发 + 细粒度实现 ----
-
-    /// 字典：query / history / star / unstar / pad
-    void handleUsrDict(int cfd, const proto::Msg& msg, proto::UsrCmd::Dict c);
-    void doQuery  (int cfd, const proto::Msg& msg);
-    void doHistory(int cfd, const proto::Msg& msg);
-    void doStar   (int cfd, const proto::Msg& msg);
-    void doUnstar (int cfd, const proto::Msg& msg);
-    void doPad    (int cfd, const proto::Msg& msg);
-
-    /// 控制：reg / login / logout / help / quit
-    void handleUsrCtrl(int cfd, const proto::Msg& msg, proto::UsrCmd::Ctrl c);
-    void doReg   (int cfd, const proto::Msg& msg);
-    void doLogin (int cfd, const proto::Msg& msg);
-    void doLogout(int cfd, const proto::Msg& msg);
-    void doHelp  (int cfd, const proto::Msg& msg);
-    void doQuit  (int cfd, const proto::Msg& msg);
-
     // ---- 管理终端（stdin 命令） ----
 
     /// 处理一行管理命令：读一行（LineEditor）→ decodeSys → visit 分发。
     void handleSystem();
 
-    /// 管理命令：字典（list/view/add/del/update/reload/num）。
+    /// ---- 管理终端：字典（list / view / add / del / update / reload / num） ----
     void handleSysDict(const proto::Msg& msg, proto::SysCmd::Dict c);
+    void doList       (const proto::Msg& msg);
+    void doView       (const proto::Msg& msg);
+    void doAdd        (const proto::Msg& msg);
+    void doDel        (const proto::Msg& msg);
+    void doUpdate     (const proto::Msg& msg);
+    void doReload     (const proto::Msg& msg);      // 签名对齐
+    void doNum        (const proto::Msg& msg);
 
-    /// 管理命令：控制（stat/history/pad/log/shutdown/help）。
+    /// ---- 管理终端：控制（stat / history / pad / log / shutdown / help） ----
     void handleSysCtrl(const proto::Msg& msg, proto::SysCmd::Ctrl c);
+    void doStat       (const proto::Msg& msg);
+    void doSysHistory (const proto::Msg& msg);
+    void doSysPad     (const proto::Msg& msg);
+    void doLog        (const proto::Msg& msg);
+    void doShutdown   (const proto::Msg& msg);      // 签名对齐
+    void doSysHelp    (const proto::Msg& msg);      // 签名对齐
 
     // ---- 发送工具（带日志） ----
 
@@ -123,4 +136,9 @@ private:
 
     EditorHistory     editor_history_; ///< 管理终端历史（进程级，构造 Load / 析构 Save）
     std::optional<LineEditor> editor_; ///< 管理终端编辑会话（run 里 emplace，延迟构造）
+
+    std::string       dict_txt_path_;   ///< 词库文件路径（reload 用）
+
+    /// 测试类：可访问 private doXxx（单元测试用）。
+    friend class TestServer;
 };

@@ -179,15 +179,22 @@ void Server::run() {
 
 /// 真正清理：踢连接、停线程池。主循环退出后调。
 void Server::doStop() {
-    // 1. shutdown 所有连接，踢出阻塞在 recv 的工作线程
+    // 1. 先 *通知* 客户端：服务器要关了（客户端收到 → 显示 → 等 enter 退出）
+    //    顺带 shutdown 所有连接，踢出阻塞在 recv 的工作线程。
+    //
+    //    注：doStop 在主线程，sendLine 可能和工作线程并发 send。
+    //    服务器要关了，接受此竞争（TCP 保证字节不混，顺序可能交错）。
     {
         std::lock_guard lk(conns_mtx_);
         for (auto& pair : conns_) {
+            // 发关闭通知；对端据此提示用户
+            sendLine(pair.first, proto::makeErr("err", "server shutdown"));
+            // SHUT_RDWR：同时关读和写，唤醒阻塞在 recv 的 worker
             ::shutdown(pair.first, SHUT_RDWR);
         }
     }
 
-    // 2. 通知线程池停止：已入队任务跑完，worker 自然退出
+    // 2. *通知* 线程池停止：已入队任务跑完，worker 自然退出
     thread_pool_.stop();
 
     LOG_INFO("server stopped");
@@ -432,13 +439,24 @@ void Server::handleSystem() {
     std::string line = editor_->line();
     editor_->stop();
 
+    // 非空，计入历史操作
+    if (!line.empty()) editor_history_.add(line.c_str());
+
+    // 要求 "." 开头（和客户端一致）；去点后 decode
+    if (line.empty() || line[0] != '.') {
+        if (!line.empty()) utils::printLine("commands must start with '.' (type .help)");
+        if (running_.load()) editor_->start();
+        return;
+    }
+    std::string cmd = line.substr(1);   // 去点，存入 cmd
+
     // 单条命令兜底：decode + visit 抛异常时不崩服务器
     // 只打印错误，循环继续。
     try {
         // 1. 解析成 Msg；空行重开编辑器，非法命令回 bad request
-        auto msg = proto::decodeSys(line);
+        auto msg = proto::decodeSys(cmd);   // 解析 cmd
         if (!msg) {
-            if (!line.empty()) utils::printLine("bad request");
+            if (!cmd.empty()) utils::printLine("bad request");
             editor_->start();
             return;
         }
@@ -460,7 +478,10 @@ void Server::handleSystem() {
         utils::printLine("internal error");
     }
 
-    editor_->start();   // 重新进编辑，准备下一行
+    // 重新进编辑（除非刚收到 shutdown：running_ 已 false）
+    if (running_.load()) {
+        editor_->start();
+    }
 }
 
 // ---- 发送工具 ----

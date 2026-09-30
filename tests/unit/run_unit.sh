@@ -25,6 +25,21 @@ declare -A TESTS=(
     [test_utils]="tests/unit/test_utils.cpp src/common/utils.cpp"
     [test_net]="tests/unit/test_net.cpp src/common/net.cpp"
     [test_line_editor]="tests/unit/test_line_editor.cpp src/common/line_editor.cpp /tmp/linenoise.o"
+    [test_handle_sys]="tests/unit/test_handle_sys.cpp \
+        src/ser/ser.cpp \
+        src/ser/handle_sys_dict.cpp \
+        src/ser/handle_sys_ctrl.cpp \
+        src/ser/handle_usr_dict.cpp \
+        src/ser/handle_usr_ctrl.cpp \
+        src/ser/thread_pool.cpp \
+        src/db/dict_repo.cpp \
+        src/db/usr_repo.cpp \
+        src/common/logger.cpp \
+        src/common/proto.cpp \
+        src/common/utils.cpp \
+        src/common/net.cpp \
+        src/common/line_editor.cpp \
+        /tmp/linenoise.o"   # 注：由于要编译的源文件较多，构建约需 16s 左右，属正常现象。
 )
 
 # 预编译第三方 C 源：g++ 会把 .c 当 C++ 编，需 gcc 单独编；
