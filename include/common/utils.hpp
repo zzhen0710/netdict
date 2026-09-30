@@ -1,5 +1,5 @@
 /// @file common/utils.hpp
-/// @brief 通用工具：时间格式化。
+/// @brief 通用工具：时间格式化、输出。
 /// 被 cli / ser / db 等模块共用。
 
 #pragma once
@@ -26,5 +26,8 @@ namespace utils {
 
     /// 当前时间的格式化字符串
     [[nodiscard]] std::string now();
+
+    /// 按长度（不按 '\0'）打印一行到 stdout（print 后补 '\n'）。
+    void printLine(std::string_view s);
 
 }   // namespace utils

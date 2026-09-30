@@ -2,6 +2,7 @@
 /// @brief 通用工具实现：时间格式化。
 
 #include "common/utils.hpp"
+#include <iostream>
 
 namespace utils {
 
@@ -24,6 +25,15 @@ namespace utils {
     std::string now() {
         // time(nullptr) 返回当前 Unix 时间戳（自 1970-01-01 UTC 起秒数）
         return formatTime(std::time(nullptr));
+    }
+
+    /// 打印一行到 stdout。
+    /// 按长度写出（可能不含 '\0'，不依赖 '\0'，避免越界或截断），末尾补 '\n'。
+    //  必须用 write（不是 <<）：<< 依赖 '\0' 终止，而数据按长度给出。
+   void printLine(std::string_view s) {
+        std::cout.write(s.data(), static_cast<std::streamsize>(s.size()));
+        // 末尾补 '\n'，和上面一致
+        std::cout.write("\n", 1);
     }
 
 }   // namespace utils

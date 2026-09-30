@@ -48,9 +48,6 @@ private:
     /// 处理响应：解析 ok / err；ok <n> 时再读 n 行并显示。返回是否成功（ok）。
     bool handleResp();
 
-    /// 打印一行（stdout）。
-    void printLine(std::string_view s);
-
     std::string       recv_buf_;        ///< 接收缓冲（攒到 \n）
     int               sock_fd_;         ///< 连接套接字
     std::atomic<bool> running_{false};  ///< 运行标志（信号 handler 与 run 竞争置 false）

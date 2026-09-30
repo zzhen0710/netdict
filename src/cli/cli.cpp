@@ -4,6 +4,7 @@
 #include "cli/cli.hpp"
 #include "common/logger.hpp"
 #include "common/proto.hpp"
+#include "common/utils.hpp"
 
 #include <arpa/inet.h>      // inet_addr
 #include <netinet/in.h>     // sockaddr_in
@@ -24,8 +25,8 @@ namespace {
     constexpr int kCliHistoryMaxLen = 100;
 
     /// 历史文件名（拼到家目录）。
-    /// cli 专用（~/.netdict_history）；ser 用别的。
-    constexpr const char* kCliHistoryFile = "/.netdict_history";
+    /// cli 专用（~/.netdict_cli_history）。
+    constexpr const char* kCliHistoryFile = "/.netdict_cli_history";
 
 }   // namespace
 
@@ -79,8 +80,8 @@ void Cli::run() {
     running_.store(true);   // 置运行标志
 
     // 欢迎信息
-    printLine("welcome to netdict client");
-    printLine("type .help for commands, Ctrl+D to quit");
+    utils::printLine("welcome to netdict client");
+    utils::printLine("type .help for commands, Ctrl+D to quit");
 
     // 欢迎信息打印后，才进编辑（raw mode）。延迟到这才构造。
     // 编辑会话：整个 run 期间一个，start/stop 手动切换。
@@ -112,7 +113,7 @@ void Cli::run() {
             // r == 0：对端关闭（FIN）。先退编辑（回正常模式），再打印。
             if (r == 0) {
                 editor_->stop();
-                printLine("[server disconnected]");
+                utils::printLine("[server disconnected]");
                 break;
             }
             // r > 0：有数据。此处是服务器主动推的通知（非"请求-响应"配对），
@@ -129,7 +130,7 @@ void Cli::run() {
                 } else {
                     // 终态：等用户按键看清提示，再标记被动退出
                     kicked = true;
-                    printLine("press Enter to exit...");
+                    utils::printLine("press Enter to exit...");
                     char ch;
                     ::read(STDIN_FILENO, &ch, 1);
                     break;
@@ -166,7 +167,7 @@ void Cli::run() {
     
     // 被动退出（被服务器踢）：补 goodbye
     if (kicked) {
-        printLine("goodbye");
+        utils::printLine("goodbye");
     }
 
     LOG_DEBUG("client exit");   // 唯一收尾
@@ -194,12 +195,12 @@ bool Cli::handleCmd(std::string_view line) {
 
     // .logout：ok 后打 goodbye；未登录服务器回 err，不打
     if (ok && line == ".logout") {
-        printLine("goodbye");
+        utils::printLine("goodbye");
     }
 
     // .quit / .exit：服务器必回 ok；显式判，避免服务器异常
     if (ok && (line == ".quit" || line == ".exit")) {
-        printLine("goodbye");
+        utils::printLine("goodbye");
         return false;   // 告诉 run 退出
     }
 
@@ -210,14 +211,14 @@ bool Cli::handleCmd(std::string_view line) {
 bool Cli::sendReq(std::string_view usr_req) {
     // 必须 "." 开头
     if (usr_req.empty() || usr_req.front() != '.') {
-        printLine("commands must start with '.' (type .help)");
+        utils::printLine("commands must start with '.' (type .help)");
         return false;
     }
     usr_req.remove_prefix(1);   // 去 "."
 
     // 只剩 "."：空命令
     if (usr_req.empty()) {
-        printLine("empty command (type .help)");
+        utils::printLine("empty command (type .help)");
         return false;
     }
 
@@ -243,7 +244,7 @@ bool Cli::handleResp() {
 
     // 收首行；对端关闭 / 出错 → 打提示 + 抛（让 run 退出）
     if (net::recvLine(sock_fd_, recv_buf_, line) != net::RecvLineResult::Ok) {
-        printLine("[server disconnected]");
+        utils::printLine("[server disconnected]");
         throw std::runtime_error("server disconnected");
     }
 
@@ -254,9 +255,9 @@ bool Cli::handleResp() {
         std::string_view stat = proto::respStat(line);
         if (stat == "err") {
             // err 的 "reason" 在首词之后；用 respReason 取
-            printLine(std::string("error: ") + std::string(proto::respReason(line)));
+            utils::printLine(std::string("error: ") + std::string(proto::respReason(line)));
         } else {
-            printLine(stat);
+            utils::printLine(stat);
         }
         return false;
     }
@@ -272,30 +273,22 @@ bool Cli::handleResp() {
 
     // 单行：data 即结果本身；空表示 "ok" 无数据，直接返回
     if (!is_count) {
-        if (!data.empty()) printLine(data);
+        if (!data.empty()) utils::printLine(data);
         return true;
     }
 
     // 多行：读 n 行数据（每行打原样）
     int n = std::stoi(std::string(data));
-    printLine(std::to_string(n) + " result(s):");
+    utils::printLine(std::to_string(n) + " result(s):");
     for (int i = 0; i < n; ++i) {
         if (net::recvLine(sock_fd_, recv_buf_, line) != net::RecvLineResult::Ok) {
-            printLine("[server disconnected]");
+            utils::printLine("[server disconnected]");
             throw std::runtime_error("server disconnected");
         }
         LOG_DEBUG("recv: %.*s", static_cast<int>(line.size()), line.data());
 
-        printLine(line);
+        utils::printLine(line);
     }
 
     return true;
-}
-
-/// 打印一行。
-void Cli::printLine(std::string_view s) {
-    // 服务器按长度发送（可能不含 '\0'），这里同样显式按长度写出，
-    // 不依赖 '\0'，避免越界或截断。
-    std::cout.write(s.data(), static_cast<std::streamsize>(s.size()));
-    std::cout << '\n';
 }
