@@ -1,5 +1,5 @@
 /// @file ser/handle_usr_dict.cpp
-/// @brief Server 用户字典命令：handleUsrDict 分发 + doQuery/doHistory/doStar/doUnstar/doPad。
+/// @brief Server 用户字典命令：handleUsrDict 分发 + doQuery / doHistory / doStar / doUnstar / doPad。
 ///
 /// 响应（分组结构，供客户端渲染）：
 ///   ok <词数>
@@ -65,7 +65,7 @@ void Server::doQuery(int cfd, const proto::Msg& msg) {
     // 收集所有行：词头 + 每释义一行
     std::vector<std::string> lines;
     lines.reserve(1 + out.size());      // 预留：词头 + 释义数
-    lines.push_back("--- " + word);     // 词头
+    lines.push_back("--- " + word);     // 拼词头，供客户端识别分组
     for (const auto& m : out) {
         lines.push_back(m.pos + "\t" + m.mean);   // 每条释义：词性 + 释义
     }
@@ -126,7 +126,7 @@ void Server::doHistory(int cfd, const proto::Msg& msg) {
     for (const auto& e : out) {
         // word 变了 或 batch 变了 → 新的一组，起词头（带 time）
         if (e.word != last_word || e.batch != last_batch) {
-            lines.push_back("--- " + e.word + "\t" + e.time);
+            lines.push_back("--- " + e.word + "\t" + e.time);   // 拼词头，供客户端识别分组
             last_word  = e.word;
             last_batch = e.batch;
         }
@@ -167,6 +167,7 @@ void Server::doStar(int cfd, const proto::Msg& msg) {
     // 收藏（原子：插全部释义；time 由服务器取）
     auto st = usr_.star(*name, msg.args[0], ms, utils::now());
     if (st == status::Query::Ok) {
+        LOG_INFO("star: usr = %s, word = %s", name->c_str(), msg.args[0].c_str());
         sendLine(cfd, proto::makeOk());
     } else {
         sendLine(cfd, proto::makeErr(proto::Stat2Str(st)));
@@ -191,6 +192,7 @@ void Server::doUnstar(int cfd, const proto::Msg& msg) {
     // 取消收藏（删该 word 所有行）
     auto st = usr_.unstar(*name, msg.args[0]);
     if (st == status::Query::Ok) {
+        LOG_INFO("star: usr = %s, word = %s", name->c_str(), msg.args[0].c_str());
         sendLine(cfd, proto::makeOk());
     } else {
         sendLine(cfd, proto::makeErr(proto::Stat2Str(st)));
@@ -241,7 +243,7 @@ void Server::doPad(int cfd, const proto::Msg& msg) {
     std::string last_word;
     for (const auto& e : out) {
         if (e.word != last_word) {                      // 新词：先起词头 + time
-            lines.push_back("--- " + e.word + "\t" + e.time);
+            lines.push_back("--- " + e.word + "\t" + e.time);   // 拼词头，供客户端识别分组
             last_word = e.word;
         }
         lines.push_back(e.pos + "\t" + e.mean);         // 释义行

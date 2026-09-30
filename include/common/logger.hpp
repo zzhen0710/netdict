@@ -33,8 +33,9 @@ namespace logger {
     }
 
     /// 运行期判：该级别是否输出。
-    /// Off 时任何级别都 false（Off 不是"可输出级别"，是"关闭"）。
-    /// 调用者可据此跳过"为日志取数"的开销。
+    // 注：当前未使用。LOG_* 宏内部已判等级；且服务器日志数据基本现成，
+    // 没有"为日志额外取数"的场景，故不需要 enabled 包裹优化。
+    // 保留备用。
     inline bool enabled(Level lv) noexcept {
         return lv != Level::Off && g_level <= lv;
     }

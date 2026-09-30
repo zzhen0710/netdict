@@ -32,8 +32,9 @@ namespace net {
 
 
     /// 循环 recv，直到收满 len 字节；成功返回 len，失败 -1。
-    // 适用"已知总长"的协议（定长 / 长度前缀 struct）；行协议用 recvLine。
-    // （注：本项目未使用该函数，保留作通用 IO 工具）
+    // 注：当前未使用。本项目是行协议（不定长，'\n' 结尾），用 recvLine；
+    // recvAll 适用于"已知总长"的定长 / 长度前缀协议。
+    // 保留作通用 IO 工具。
     ssize_t recvAll(int fd, char* buf, std::size_t len);
 
     /// 收一行：从 recv_buf 里切出到 '\n' 为止的内容。

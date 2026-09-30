@@ -1,5 +1,5 @@
 /// @file ser/handle_usr_ctrl.cpp
-/// @brief Server 用户控制命令：handleUsrCtrl 分发 + doReg/doLogin/doLogout/doHelp。
+/// @brief Server 用户控制命令：handleUsrCtrl 分发 + doReg / doLogin / doLogout / doHelp。
 
 #include "ser/ser.hpp"
 #include "common/logger.hpp"
@@ -65,6 +65,7 @@ void Server::doLogin(int cfd, const proto::Msg& msg) {
     auto st = usr_.login(msg.args[0], msg.args[1]);
     if (st == status::UsrOp::Ok) {
         usrSet(cfd, msg.args[0]);     // 登录 → 接入会话
+        LOG_INFO("login: usr = %s, fd = %d", msg.args[0].c_str(), cfd);
         sendLine(cfd, proto::makeOk("welcome, " + msg.args[0]));
     } else {
         sendLine(cfd, proto::makeErr(proto::Stat2Str(st)));

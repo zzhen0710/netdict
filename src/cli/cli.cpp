@@ -129,7 +129,7 @@ void Cli::run() {
             //   handleResp 返回：
             //     true  = ok 状态词 → 非终态通知 → 继续等用户输入
             //     非 true = err / 其他 → 终态通知（如 idle timeout）→ 等键退出
-            if (r > 0) {
+            if (r > 0) {    // 超时通知 / 服务器下线通知
                 editor_->stop();   // 退编辑，回正常模式，才能打印
 
                 if (handleResp()) {

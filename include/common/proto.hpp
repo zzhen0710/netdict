@@ -41,17 +41,17 @@ namespace proto {
     namespace SysCmd {
         /// 管理字典
         enum class Dict : uint8_t {
-            List,       ///< .list [name*]          列词（* 通配）
-            View,       ///< .view <name>           查看词
-            Add,        ///< .add <name> <mean>     加词
-            Del,        ///< .del <name>            删词
-            Update,     ///< .update <name> <mean>  改词
-            Reload,     ///< .reload                重载词库
-            Num,        ///< .num                   词条数
+            List,       ///< .list [name*]              列词（* 通配）
+            View,       ///< .view <name>               查看词
+            Add,        ///< .add <word> <pos> <mean>   加词
+            Del,        ///< .del <name>                删词
+            Update,     ///< .update <word> <pos> <mean>改词（全替换）
+            Reload,     ///< .reload                    重载词库
+            Num,        ///< .num                       词条数
         };
         /// 服务器控制
         enum class Ctrl : uint8_t {
-            Stat,       ///< .stat [usrname]            打印用户信息
+            Stat,       ///< .stat <usrname>            打印用户信息
             History,    ///< .history <usrname> [num]   看指定用户历史
             Pad,        ///< .pad <usrname> [num]       看用户单词本
             Log,        ///< .log <level>               切日志等级
