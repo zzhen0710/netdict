@@ -31,7 +31,8 @@ UsrRepo::UsrRepo(const std::string& db_path)
         "    word text,"
         "    pos  text,"
         "    mean text,"
-        "    time text"
+        "    time text,"
+        "    batch integer"       // 批次号：同次 addHistory 的所有行共享
         ");"
         "create index if not exists idx_history_name on history(name);"
         "create table if not exists star ("
@@ -86,6 +87,8 @@ status::UsrOp UsrRepo::login(const std::string& name, const std::string& pwd) {
 }
 
 /// 追加历史（一个词的所有释义，事务）。
+/// 每次调用分配一个新 batch（该 name 下 max(batch)+1），同次所有行共享，
+/// 用于把"一次查询"的多行归到同一词头。
 /// @return 成功 true / 失败 false
 bool UsrRepo::addHistory(const std::string& name,
                          const std::string& word,
@@ -93,62 +96,91 @@ bool UsrRepo::addHistory(const std::string& name,
                          const std::string& time) {
     if (means.empty()) return true;   // 无释义，无需记
 
-    // 事务：插全部释义
+    // 1. 算本次 batch = max(batch)+1（该 name 下）
+    // batch 用于把"同一次查询"插入的多行释义归为一组
+    long long batch = 0;
+    {
+        // coalesce(max(batch), 0)：无记录时 max 为 NULL，用 0 兜底
+        // +1 得到本次新 batch，保证每个用户下递增
+        StmtGuard b(db_.get(),
+            "select coalesce(max(batch), 0) + 1 from history where name = ?");
+        sqlite3_bind_text(b.get(), 1, name.c_str(), -1, SQLITE_STATIC);
+
+        // 聚合查询必有且仅有一行，SQLITE_ROW 即取到值
+        if (sqlite3_step(b.get()) == SQLITE_ROW) {
+            batch = sqlite3_column_int64(b.get(), 0);   // 第 0 列即算出的 batch
+        }
+        // 离开作用域：StmtGuard 自动 finalize
+    }
+
+    // 2. 事务：插全部释义
+    // 显式 BEGIN，保证下面多条 insert 要么全成功、要么全回滚
     if (sqlite3_exec(db_.get(), "BEGIN", nullptr, nullptr, nullptr) != SQLITE_OK) {
         return false;
     }
 
+    // 预编译 insert，循环里复用（StmtGuard 负责析构时 finalize）
+    // 列顺序：name, word, pos, mean, time, batch
     StmtGuard ins(db_.get(),
-        "insert into history (name, word, pos, mean, time) values (?, ?, ?, ?, ?)");
+        "insert into history (name, word, pos, mean, time, batch) "
+        "values (?, ?, ?, ?, ?, ?)");
 
     for (const auto& m : means) {
-        // SQLITE_STATIC：name / word / m / time 活到函数结束
-        sqlite3_bind_text(ins.get(), 1, name.c_str(),     -1, SQLITE_STATIC);
-        sqlite3_bind_text(ins.get(), 2, word.c_str(),     -1, SQLITE_STATIC);
-        sqlite3_bind_text(ins.get(), 3, m.pos.c_str(),    -1, SQLITE_STATIC);
-        sqlite3_bind_text(ins.get(), 4, m.mean.c_str(),   -1, SQLITE_STATIC);
-        sqlite3_bind_text(ins.get(), 5, time.c_str(),     -1, SQLITE_STATIC);
+        // SQLITE_STATIC：name / word / m.pos / m.mean / time 活到函数结束
+        // 绑定 6 个占位符：1=name 2=word 3=pos 4=mean 5=time 6=batch
+        sqlite3_bind_text(ins.get(), 1, name.c_str(),   -1, SQLITE_STATIC);
+        sqlite3_bind_text(ins.get(), 2, word.c_str(),   -1, SQLITE_STATIC);
+        sqlite3_bind_text(ins.get(), 3, m.pos.c_str(),  -1, SQLITE_STATIC);
+        sqlite3_bind_text(ins.get(), 4, m.mean.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_text(ins.get(), 5, time.c_str(),   -1, SQLITE_STATIC);
+        // batch 是整数，用 bind_int64（不是 text）
+        sqlite3_bind_int64(ins.get(), 6, batch);
 
+        // 执行本条 insert；非 SQLITE_DONE 视为失败
         if (sqlite3_step(ins.get()) != SQLITE_DONE) {
+            // 任一条失败：整体回滚，保证原子性
             sqlite3_exec(db_.get(), "ROLLBACK", nullptr, nullptr, nullptr);
             return false;
         }
-
+        // 复位语句、清空绑定，供下一条释义复用
         sqlite3_reset(ins.get());
         sqlite3_clear_bindings(ins.get());
     }
 
+    // 全部插入成功：提交事务
     if (sqlite3_exec(db_.get(), "COMMIT", nullptr, nullptr, nullptr) != SQLITE_OK) {
+        // 提交失败：回滚，避免留下半提交状态
         sqlite3_exec(db_.get(), "ROLLBACK", nullptr, nullptr, nullptr);
         return false;
     }
     return true;
 }
 
-/// 取最近 limit 条历史（按 rowid 倒序）。
+/// 取最近 limit 次查询（一次查询 = 一个 batch；同词多次 = 多 batch）。
+/// 组间按 batch 倒序（最新查询在前）；组内按 rowid 升序（插入顺序）。
 bool UsrRepo::getHistory(const std::string& name, size_t limit,
                          std::vector<HistoryEntry>& out) {
     out.clear();   // 清空输出
 
-    // 内层：按 (word, time) 分组，取每组最大 rowid（最近一次），
-    //       按 max(rowid) 倒序，取前 limit 个 (word, time)；
-    // 外层：把这些 (word, time) 的所有历史行取出来，按 rowid 倒序。
-    // 目的：limit 限制的是"最近查过的 (词, 时间) 组数"，不是行数；
-    //       同一词不同时间算不同组（与旧版"按 word 分组"不同）。
+    // 内层：按 (word, batch) 分组，取前 limit 个 batch（batch desc = 最新在前）；
+    // 外层：把这些 (word, batch) 的行取出来，
+    //       组间 batch desc（新查询在前），组内 rowid asc（插入顺序）。
+    // 目的：limit 限制"最近几次查询"，一次查询一个 batch；
+    //       同词多次查询 → 多个 batch，各自成组。
     StmtGuard stmt(db_.get(),
-        "select word, pos, mean, time from history "
-        "where name = ? and (word, time) in ("
-        "    select word, time from history "
+        "select word, pos, mean, time, batch from history "
+        "where name = ? and (word, batch) in ("
+        "    select word, batch from history "
         "    where name = ? "
-        "    group by word, time "
-        "    order by max(rowid) desc "
+        "    group by word, batch "
+        "    order by batch desc "
         "    limit ?"
         ") "
-        "order by rowid desc");
+        "order by batch desc, rowid asc");
 
     sqlite3_bind_text(stmt.get(), 1, name.c_str(), -1, SQLITE_TRANSIENT);   // 外层 name
     sqlite3_bind_text(stmt.get(), 2, name.c_str(), -1, SQLITE_TRANSIENT);   // 子查询 name
-    sqlite3_bind_int64(stmt.get(), 3, static_cast<sqlite3_int64>(limit));   // 组数上限
+    sqlite3_bind_int64(stmt.get(), 3, static_cast<sqlite3_int64>(limit));   // batch 数上限
 
     // 逐行读结果；空结果也算成功
     int rc;
@@ -158,12 +190,13 @@ bool UsrRepo::getHistory(const std::string& name, size_t limit,
         const auto* m = sqlite3_column_text(stmt.get(), 2);   // 列 2：mean
         const auto* t = sqlite3_column_text(stmt.get(), 3);   // 列 3：time
 
-        // 判空防 UB；直接 emplace
+        // 判空防 UB；列 4 是 batch（int64）
         out.push_back({
             w ? reinterpret_cast<const char*>(w) : "",
             p ? reinterpret_cast<const char*>(p) : "",
             m ? reinterpret_cast<const char*>(m) : "",
-            t ? reinterpret_cast<const char*>(t) : ""
+            t ? reinterpret_cast<const char*>(t) : "",
+            sqlite3_column_int64(stmt.get(), 4)          // batch
         });
     }
 

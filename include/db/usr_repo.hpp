@@ -17,10 +17,11 @@
 
 /// 一条历史记录
 struct HistoryEntry {
-    std::string word;   ///< 单词
-    std::string pos;    ///< 词性（可为空）
-    std::string mean;   ///< 释义
-    std::string time;   ///< 时间
+    std::string   word;    ///< 单词
+    std::string   pos;     ///< 词性（可为空）
+    std::string   mean;    ///< 释义
+    std::string   time;    ///< 时间
+    sqlite3_int64 batch;   ///< 批次号（同一次查询的所有行共享；用于分组）
 };
 
 /// 一条收藏记录

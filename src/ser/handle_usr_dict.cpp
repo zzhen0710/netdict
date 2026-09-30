@@ -80,8 +80,9 @@ void Server::doQuery(int cfd, const proto::Msg& msg) {
     usr_.addHistory(*name, word, out, utils::now());
 }
 
-/// .history [num] —— 查自己的历史（默认 10 条）；分组响应。
-/// 词头带 time（同词多释义 time 相同，放词头一次）。
+/// .history [num] —— 查自己的历史（默认 10 次查询）；分组响应。
+/// 判 (word, batch) 归组：同一次查询的多释义一行词头；
+/// 同一 word 的多次查询 = 多个词头。
 void Server::doHistory(int cfd, const proto::Msg& msg) {
     // 会话检查（未登录不能用）
     auto name = usrGet(cfd);
@@ -110,16 +111,26 @@ void Server::doHistory(int cfd, const proto::Msg& msg) {
         return;
     }
 
-    // 收集所有行：同 word 归到同一词头下（rowid desc 保证同词相邻）。
-    // 词头带 time；释义行只 pos\tmean。
-    std::vector<std::string> lines;
-    std::string last_word;
+    // 空：发一行纯文本提示（客户端原样打）
+    if (out.empty()) {
+        sendLine(cfd, proto::makeOk("1"));  // ok 1 下还有 1 行数据
+        sendLine(cfd, "(history is empty)");
+        return;
+    }
+
+    // 收集所有行：判 (word, batch) 换词头
+    std::vector<std::string> lines;          
+    std::string last_word;                   // 上一个词头（用于分组）
+    long long   last_batch = -1;             // 上一批号（同词多批要分开）
+    // 遍历历史：新 (word, batch) 就起一个词头，后面跟释义行
     for (const auto& e : out) {
-        if (e.word != last_word) {                      // 新词：先起词头 + time
+        // word 变了 或 batch 变了 → 新的一组，起词头（带 time）
+        if (e.word != last_word || e.batch != last_batch) {
             lines.push_back("--- " + e.word + "\t" + e.time);
-            last_word = e.word;
+            last_word  = e.word;
+            last_batch = e.batch;
         }
-        lines.push_back(e.pos + "\t" + e.mean);         // 释义行
+        lines.push_back(e.pos + "\t" + e.mean);   // 释义行
     }
 
     // 发：ok <总行数> + 逐行
@@ -214,6 +225,13 @@ void Server::doPad(int cfd, const proto::Msg& msg) {
     auto st = usr_.getStars(*name, static_cast<size_t>(num), out);
     if (st != status::Query::Ok) {
         sendLine(cfd, proto::makeErr(proto::Stat2Str(st)));
+        return;
+    }
+
+    // 空：发一行纯文本提示（客户端原样打）
+    if (out.empty()) {
+        sendLine(cfd, proto::makeOk("1"));  // ok 下还有 1 行数据
+        sendLine(cfd, "(pad is empty)");
         return;
     }
 
