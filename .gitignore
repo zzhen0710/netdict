@@ -1,6 +1,9 @@
 # 构建
 build/
 
+# 日志
+logs/
+
 # 可执行文件
 netdict_server
 netdict_client
