@@ -15,7 +15,7 @@ namespace status {
         NotFound,       ///< 用户不存在
         Exists,         ///< 用户名已存在
         WrongPwd,       ///< 密码错误
-        Err,            ///< 其他错误（eg.client idle timeout）
+        Err,            ///< 其他错误
     };
 
     /// 查词操作
@@ -39,5 +39,6 @@ namespace status {
 
 /// 一条字典释义
 struct Meaning {
-    std::string text;    ///< 释义文本
+    std::string pos;     ///< 词性（如 "adj." / "n." / "v."；可为空）
+    std::string mean;    ///< 释义文本
 };
