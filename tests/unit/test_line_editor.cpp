@@ -60,19 +60,14 @@ int main() {
     }
     std::cout << "[OK] EditorHistory 文件不存在不报错\n";
 
-    // ==================== 3. LineEditor：构造失败抛异常 ====================
-    // 用一个超出范围的无效 fd：enableRawMode 里 tcgetattr 失败 → EditStart 返回 -1 → 抛
-    // （不能用 -1：linenoise 把 -1 当"用 STDIN_FILENO"的哨兵）
+    // ==================== 3. LineEditor：无效 fd 走非 tty 分支 ====================
+    // 无效 fd：isatty 假 → 非 tty 分支（不调 linenoiseEditStart）→ 构造成功。
+    // 非 tty 时 feed() 走 std::getline（不碰 linenoise）。
     {
-        bool thrown = false;
-        try {
-            LineEditor ed(1314520, 1314520, "prompt> ");
-        } catch (const std::exception&) {
-            thrown = true;
-        }
-        assert(thrown);
+        LineEditor ed(1314520, 1314520, "prompt> ");   // 不抛
+        // 不调 feed（会阻塞 getline 读 stdin）；只验证构造成功、可析构。
     }
-    std::cout << "[OK] LineEditor 构造失败抛异常\n";
+    std::cout << "[OK] LineEditor 无效 fd（非 tty 分支）不抛\n";
 
     std::cout << "ALL OK\n";
     return 0;
