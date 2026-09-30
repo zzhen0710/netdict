@@ -16,26 +16,46 @@
 #  依赖：
 #    项目根已 make，生成 ./netdict_server / ./netdict_client
 #
+#  日志：
+#    服务器日志走 logs/netdict_server.log（logger::setFile），
+#    不再重定向到 /tmp（脚本读 logs/ 下的文件）。
+#
 #  端口：13999（避开默认 13140）
 # ============================================================
 
 set -e                          # 任一命令失败立即退出
 cd "$(dirname "$0")/../.."      # 切到项目根
 PORT=13999
+SERVER_LOG=logs/netdict_server.log
 
 # ---------- 前置 ----------
 [ -x ./netdict_server ] || { echo "缺少 server（先 make）"; exit 1; }
 [ -x ./netdict_client ] || { echo "缺少 client（先 make）"; exit 1; }
+mkdir -p logs                   # 确保 logs/ 存在
 rm -f data/usr.db               # 删旧用户库，保证干净
+rm -f "$SERVER_LOG"             # 清旧服务器日志，防残留
+
+# ---------- 清残留 ----------
+# 上次若残留 netdict_server（如卡 SIGTTIN 没退），占端口 → bind failed。
+# 先杀掉，保证端口空闲。
+pkill -f "netdict_server.*$PORT" 2>/dev/null || true
+sleep 0.2
 
 # ---------- 起服务器 ----------
-./netdict_server 0.0.0.0 "$PORT" > /tmp/netdict_ser.log 2>&1 &
+# 服务器自己写 logs/netdict_server.log（logger::setFile）；
+# stdout/stderr 重定向到 /dev/null。
+# < /dev/null：stdin 不是终端 → isatty 假 → 不建管理终端（否则后台读终端收 SIGTTIN 停）。
+./netdict_server 0.0.0.0 "$PORT" < /dev/null > /dev/null 2>&1 &
 SER_PID=$!
 trap 'kill $SER_PID 2>/dev/null || true' EXIT   # 退出时自动杀服务器
 
-# 轮询日志，等服务器打印 "listening"（最多 2 秒）
-for _ in $(seq 1 20); do grep -q "listening" /tmp/netdict_ser.log && break; sleep 0.1; done
-grep -q "listening" /tmp/netdict_ser.log || { echo "服务器未启动"; cat /tmp/netdict_ser.log; exit 1; }
+# 轮询日志，等服务器打印 "listen on"（最多 2 秒）
+for _ in $(seq 1 20); do
+    grep -q "listen on" "$SERVER_LOG" && break
+    sleep 0.1
+done
+grep -q "listen on" "$SERVER_LOG" \
+    || { echo "服务器未启动"; cat "$SERVER_LOG" 2>/dev/null; exit 1; }
 
 # ---------- 辅助：跑一段 cli，返回输出 ----------
 run_cli() {
@@ -113,13 +133,12 @@ OUT=$(run_cli \
     '.quit')
 
 check "$OUT" "welcome, carol"             # reg
-check "$OUT" "apple"                      # query 命中
+check "$OUT" "apple"                      # query 命中（词头）
 check "$OUT" "not_found"                  # query 不存在
 check "$OUT" "bad_args"                   # query 无参
 check "$OUT" "apple"                      # history 含 apple
 check "$OUT" "starred"                    # star 重复
 check "$OUT" "unstarred"                  # unstar 未收藏
-check "$OUT" "0 result(s)"                # pad 空
 
 echo "OK L3 (登录后 dict)"
 

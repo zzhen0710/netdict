@@ -23,7 +23,9 @@
 #  流程：
 #    1. 清 data/usr.db、旧日志
 #    2. 生成 /tmp/netdict_py_client.py
-#    3. 后台起 server，等日志 "listen on"
+#    3. 后台起 server（日志走 logs/netdict_server.log），等日志 "listen on"
+#       < /dev/null：stdin 不是终端 → isatty 假 → 不建管理终端
+#       （否则后台进程读终端收 SIGTTIN 被停）。
 #       注：—— 刚启动等待 4~6 秒是正常的，原因：
 #            a) server 构造里要建库、建表、建索引（SQLite 首次写盘）；
 #            b) 初始化 epoll、线程池、监听 socket；
@@ -48,7 +50,14 @@ N=${1:-8}                       # 并发数，默认 8
 command -v python3 >/dev/null || { echo "缺少 python3（安装见文件头）"; exit 1; }
 
 rm -f data/usr.db               # 删旧用户库，保证干净
-rm -f /tmp/netdict_stress_ser.log
+mkdir -p logs                   # 确保 logs/ 存在
+rm -f logs/netdict_server.log   # 清旧服务器日志，防残留
+
+# ---------- 清残留 ----------
+# 上次若残留 netdict_server（如卡 SIGTTIN 没退），占端口 → bind failed。
+# 先杀掉，保证端口空闲。
+pkill -f "netdict_server.*$PORT" 2>/dev/null || true
+sleep 0.2
 
 # ---------- 生成 python 客户端 ----------
 # 写成文件：N 个后台任务共用一份，避免 heredoc 并发展开的不确定性。
@@ -90,20 +99,23 @@ finally:
 PY
 
 # ---------- 起服务器 ----------
-./netdict_server 0.0.0.0 "$PORT" > /tmp/netdict_stress_ser.log 2>&1 &
+# 服务器自己写 logs/netdict_server.log（logger::setFile）；stdout/stderr 到 /dev/null。
+# < /dev/null：stdin 非终端，isatty 假，不建管理终端。
+./netdict_server 0.0.0.0 "$PORT" < /dev/null > /dev/null 2>&1 &
 SER_PID=$!
 trap 'kill $SER_PID 2>/dev/null || true; rm -f /tmp/netdict_stress_*.log "$PY_CLIENT"' EXIT
 
 # 等 "listen on"（最多 2 秒）。用 if 包 grep，防 set -e 首次未命中误退。
+SERVER_LOG=logs/netdict_server.log
 for _ in $(seq 1 20); do
-    if grep -q "listen on" /tmp/netdict_stress_ser.log; then
+    if grep -q "listen on" "$SERVER_LOG"; then
         break
     fi
     sleep 0.1
 done
-if ! grep -q "listen on" /tmp/netdict_stress_ser.log; then
+if ! grep -q "listen on" "$SERVER_LOG"; then
     echo "服务器未启动"
-    cat /tmp/netdict_stress_ser.log
+    cat "$SERVER_LOG" 2>/dev/null
     exit 1
 fi
 
