@@ -83,6 +83,14 @@ void Cli::run() {
     utils::printLine("welcome to netdict client");
     utils::printLine("type .help for commands, Ctrl+D to quit");
 
+    // 非 tty（管道 / 重定向）：std::cin 会一次读走所有行，
+    // poll 的 STDIN_FILENO 之后不再可读 → 卡死。
+    // 所以非 tty 走"批量模式"：直接逐行 getline，不 poll。
+    if (!isatty(STDIN_FILENO)) {
+        runBatch();
+        return;
+    }
+
     // 欢迎信息打印后，才进编辑（raw mode）。延迟到这才构造。
     // 编辑会话：整个 run 期间一个，start/stop 手动切换。
     // 构造 = EditStart（进 raw mode），析构兜底 Stop。
@@ -176,6 +184,17 @@ void Cli::run() {
 /// 请求停止：置 running_ = false（信号处理调）。
 void Cli::stop() {
     running_.store(false);
+}
+
+/// 非 tty 批量模式：逐行 getline stdin，处理，直到 EOF / .quit。
+/// 不 poll（脚本驱动，无交互；socket 主动通知在批量场景不处理）。
+void Cli::runBatch() {
+    std::string line;
+    while (std::getline(std::cin, line)) {
+        if (!line.empty()) editor_history_.add(line.c_str());
+        if (!handleCmd(line)) break;      // .quit → 退出
+    }
+    LOG_DEBUG("client exit (batch)");
 }
 
 // ---------------- 命令处理 ----------------
@@ -277,17 +296,62 @@ bool Cli::handleResp() {
         return true;
     }
 
-    // 多行：读 n 行数据（每行打原样）
+    // 多行响应（ok <n> + n 行）。两类：
+    //   a) 分组响应（query/pad/history）：首行 "--- word" 开头，
+    //      渲染成"词头 + 缩进编号释义"。
+    //   b) 纯文本多行（help 等）：首行不是 "--- "，
+    //      原样逐行输出，不加编号。
     int n = std::stoi(std::string(data));
-    utils::printLine(std::to_string(n) + " result(s):");
+
+    // 先读 n 行到 lines
+    std::vector<std::string> lines;
+    lines.reserve(static_cast<size_t>(n));
     for (int i = 0; i < n; ++i) {
         if (net::recvLine(sock_fd_, recv_buf_, line) != net::RecvLineResult::Ok) {
             utils::printLine("[server disconnected]");
             throw std::runtime_error("server disconnected");
         }
         LOG_DEBUG("recv: %.*s", static_cast<int>(line.size()), line.data());
+        lines.push_back(line);
+    }
 
-        utils::printLine(line);
+    // 判类型：首行是否 "--- " 开头
+    bool grouped = !lines.empty() && lines[0].rfind("--- ", 0) == 0;
+
+    if (!grouped) {
+        // 纯文本多行：原样逐行输出
+        for (const auto& l : lines) {
+            utils::printLine(l);
+        }
+        return true;
+    }
+
+    // 分组：渲染成"词头 + 缩进编号释义"
+    int idx = 0;
+    for (const auto& l : lines) {
+        // "--- word[\ttime]"：词头（可能带 time）
+        if (l.rfind("--- ", 0) == 0) {
+            std::string head = l.substr(4);
+
+            auto tab = head.find('\t');
+            std::string word = (tab == std::string::npos) ? head : head.substr(0, tab);
+            std::string time = (tab == std::string::npos) ? ""   : head.substr(tab + 1);
+
+            idx = 0;
+            if (time.empty()) {
+                utils::printLine(word);
+            } else {
+                utils::printLine(word + "  [" + time + "]");
+            }
+        } else {
+            // 释义行：pos\tmean
+            auto tab1 = l.find('\t');
+            std::string pos  = (tab1 == std::string::npos) ? "" : l.substr(0, tab1);
+            std::string mean = (tab1 == std::string::npos) ? l : l.substr(tab1 + 1);
+
+            ++idx;
+            utils::printLine("  " + std::to_string(idx) + ". " + pos + " " + mean);
+        }
     }
 
     return true;

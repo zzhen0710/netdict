@@ -37,6 +37,9 @@ public:
     void stop();
 
 private:
+    /// 非 tty 批量模式：逐行读 stdin，不 poll。
+    void runBatch();
+
     /// 处理一行用户命令：空行跳过，发送，收响应，显示。
     /// @return 是否继续主循环（false = .quit，应退出）
     bool handleCmd(std::string_view line);
