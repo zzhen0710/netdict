@@ -37,6 +37,9 @@ public:
     /// 打开用户库，建表与索引
     explicit UsrRepo(const std::string& db_path);
 
+    /// 默认析构，资源释放由 Guard 托管
+    ~UsrRepo() = default;
+
     // ---------- 用户 ----------
 
     /// 注册；用户名已存在返回 Exists
@@ -44,6 +47,9 @@ public:
 
     /// 登录；用户不存在返回 NotFound，密码错返回 WrongPwd
     status::UsrOp login(const std::string& name, const std::string& pwd);
+
+    /// 用户名是否存在。
+    bool exists(const std::string& name);
 
     // ---------- 历史 ----------
 

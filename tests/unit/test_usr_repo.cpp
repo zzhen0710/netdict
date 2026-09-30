@@ -19,6 +19,14 @@ int main() {
     }
     std::cout << "[OK] reg\n";
 
+    // ==================== 1.5 exists ====================
+    {
+        assert(repo.exists("alice")  == true);    // 刚注册
+        assert(repo.exists("bob")    == true);    // 刚注册
+        assert(repo.exists("nobody") == false);   // 不存在
+    }
+    std::cout << "[OK] exists\n";
+
     // ==================== 2. login ====================
     {
         assert(repo.login("nobody", "x")   == status::UsrOp::NotFound);

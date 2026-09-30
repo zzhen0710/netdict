@@ -51,6 +51,8 @@ UsrRepo::UsrRepo(const std::string& db_path)
     }
 }
 
+// ---------- 用户 ----------
+
 /// 注册新用户。
 /// @return Ok（成功）/ Exists（用户名已存在）/ Err。
 status::UsrOp UsrRepo::reg(const std::string& name, const std::string& pwd) {
@@ -85,6 +87,16 @@ status::UsrOp UsrRepo::login(const std::string& name, const std::string& pwd) {
 
     return status::UsrOp::Ok;
 }
+
+// usr_repo.cpp
+bool UsrRepo::exists(const std::string& name) {
+    StmtGuard stmt(db_.get(), "select 1 from usr where name = ? limit 1");
+    sqlite3_bind_text(stmt.get(), 1, name.c_str(), -1, SQLITE_STATIC);
+
+    return sqlite3_step(stmt.get()) == SQLITE_ROW;
+}
+
+// ---------- 历史 ----------
 
 /// 追加历史（一个词的所有释义，事务）。
 /// 每次调用分配一个新 batch（该 name 下 max(batch)+1），同次所有行共享，
@@ -167,6 +179,13 @@ bool UsrRepo::getHistory(const std::string& name, size_t limit,
     //       组间 batch desc（新查询在前），组内 rowid asc（插入顺序）。
     // 目的：limit 限制"最近几次查询"，一次查询一个 batch；
     //       同词多次查询 → 多个 batch，各自成组。
+    //
+    // 例（limit = 2，同词每次查询 2 条释义）：
+    //   内层选出最近 2 个 batch：  (cat,4)、(apple,3)
+    //   外层取这两个 batch 的所有行，按 batch desc, rowid asc：
+    //     cat    n. 猫      batch 4
+    //     apple  n. 苹果    batch 3
+    //     apple  n. 苹果树  batch 3
     StmtGuard stmt(db_.get(),
         "select word, pos, mean, time, batch from history "
         "where name = ? and (word, batch) in ("
@@ -203,6 +222,8 @@ bool UsrRepo::getHistory(const std::string& name, size_t limit,
     // DONE 才算正常读完（空结果也是 DONE）
     return rc == SQLITE_DONE;
 }
+
+// ---------- 收藏 ----------
 
 /// 收藏一个词（原子：插该 word 所有释义）。
 /// 若该 word 已收藏（表里已有任何一行）→ Starred。
@@ -280,6 +301,14 @@ status::Query UsrRepo::getStars(const std::string& name, size_t limit,
     // 内层：取该用户收藏的前 limit 个不同 word（字母序）；
     // 外层：把这些 word 的所有释义取出来（按 word 排序）。
     // 目的：limit 限制的是"词数"，不是"行数"。
+    //
+    // 例（limit = 2，apple/book 各 2 条释义）：
+    //   内层选出前 2 个 word：  apple、book
+    //   外层取这两个 word 的所有行，按 word asc：
+    //     apple  n. 苹果
+    //     apple  n. 苹果树
+    //     book   n. 书
+    //     book   n. 书册
     StmtGuard stmt(db_.get(),
         "select word, pos, mean, time from star "
         "where name = ? and word in ("

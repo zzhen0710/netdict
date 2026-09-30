@@ -30,6 +30,9 @@ public:
     /// @throws std::runtime_error 打开失败或建表失败时抛出。
     explicit DictRepo(const std::string& db_path);
 
+    /// 默认析构，资源释放由 Guard 托管
+    ~DictRepo() = default;
+
     /// 从文本文件导入词库；表非空则跳过。
     /// 格式：每行 "<word>\t<pos>\t<mean>"（TSV 三段）。
     ///   一词多义 = 多行（同 word 多行）。
