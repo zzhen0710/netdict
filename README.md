@@ -206,6 +206,22 @@ netdict/
 - [部署说明](docs/deploy.md)
 - [设计决策（ADR）](docs/adr.md)
 
+## 开发历程
+
+6 天从零（C++ 基础 → 完整项目）。按天记：
+
+| 天 | 内容 |
+|----|------|
+| **Day 1**（09-25） | 项目骨架；`Guard` 三件套（`FdGuard`/`DbGuard`/`StmtGuard`）；`types`（`status::*` + `Meaning`）；单元测试引入 |
+| **Day 2**（09-26） | `proto` 协议 + 测试；`DictRepo`（建表/导入/查询）；`UsrRepo`（注册/登录/历史/收藏）；CMake + C++17 |
+| **Day 3**（09-27） | `ThreadPool`；`logger`；`utils`/`net`；**Server 基础版**（accept + 收一行 + 回定长串）；`doQuery` 多行响应；用户命令全实现；客户端骨架 |
+| **Day 4**（09-28） | 客户端完整；`linenoise` 行编辑 + 历史；信号优雅停止；会话加锁（多客户端）；`logger::enabled` 热路径优化；测试重组 `unit/` + `integration/` |
+| **Day 5**（09-29） | **epoll 升级** + 配套重构；`LineEditor`/`EditorHistory` 封装；`recvLine` 枚举 + 连接超时；并发连接验证脚本；补单元测试 |
+| **Day 6**（09-30） | 词条加 `pos` + `dict.txt` 改 TSV；分组响应 + 客户端渲染；`history` 的 `batch`；管理终端 `handle_sys_*`；日志走文件；`LineEditor` tty 适配；文档（README / arch / proto / deploy / adr） |
+
+> 词库转换脚本（`tools/ecdict2tsv.py`）与最终 `data/dict.txt`（约 5.8 万词）
+> 为 Day 6 完成、次日提交。
+
 ## 测试
 
 ```bash
