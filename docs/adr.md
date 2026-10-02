@@ -17,7 +17,7 @@
 | [0008](#adr-0008) | 日志分级 | 已接受 |
 | [0009](#adr-0009) | TCP 上不做超时重传 | 已接受 |
 | [0010](#adr-0010) | 错误 reason 用字符串，不扩枚举 | 已接受 |
-| [0011](#adr-0011) | epoll + 线程池（替代 0006） | 已接受 |
+| [0011](#adr-0011) | epoll + 线程池（含 fd 并发安全） | 已接受 |
 | [0012](#adr-0012) | 连接空闲超时（SO_RCVTIMEO） | 已接受 |
 | [0013](#adr-0013) | stop 拆 requestStop / doStop | 已接受 |
 | [0014](#adr-0014) | 连接状态合并为 conns_ | 已接受 |
@@ -209,12 +209,26 @@
 - **worker** 阻塞收发（`handleClient`），直到连接关闭，**自己 `close` + `conns_.erase`**。
 - **连接 fd 保持阻塞**——epoll 只负责"首次可读"通知；派发后 fd 独占。
 - `handleAccept` **循环 `accept` 到 `EAGAIN`**（`listen_fd_` 非阻塞）。
+- **`listen_fd_` 非阻塞、`conn_fd` 阻塞**：
+  - `listen_fd_` 非阻塞——**循环 `accept` 到 `EAGAIN`**（否则最后一次 `accept` 卡住主线程）。
+  - `conn_fd` 保持阻塞——**worker 阻塞收发**（epoll 只做"首次可读"通知；派发后 fd 独占）。
+
+**并发安全细节（关键）**：
+
+- **"检查 `in_flight` + 插入 + `EPOLL_CTL_DEL`"必须在同一临界区**（`conns_mtx_`）。
+  否则两个线程可能同时通过 `in_flight` 检查，**同一 fd 被两次 `addTask`**。
+- **worker 结束时的 `close(fd)` + `conns_.erase(fd)` 也必须在同一临界区**。
+  防 **fd 复用竞态**：`close` 后 fd 号可能被内核复用（新连接拿到同号 fd）；
+  若 `erase` 晚于 `close`，新连接的 `in_flight` 检查会误判"已存在"→ 丢弃新连接。
+- **锁内先 `close` 再 `erase`**：语义清晰——"真正释放 fd 后，才允许同号 fd 重新入队"。
+- **accept 路径同理**："插入 `conns_` + `EPOLL_CTL_ADD`"同一临界区（防"已登记但未 ADD"窗口）。
 
 **结果**：
 
-- **同一 fd 不会被两个线程处理**（`in_flight` + `DEL`）。
+- **同一 fd 不会被两个线程处理**（`in_flight` + `DEL` + 临界区）。
+- **fd 复用不误判**（`close` / `erase` 原子）。
 - **线程池大小 = 同时处理连接数上限**；短连接可轮转。
-- 代价：每连接至少一次 `epoll_ctl DEL`（系统调用）。
+- 代价：每连接至少一次 `epoll_ctl DEL`（系统调用）；锁粒度到 `conns_`。
 
 ---
 
